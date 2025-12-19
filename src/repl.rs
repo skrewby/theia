@@ -1,5 +1,7 @@
 use std::io::{Write, stdin, stdout};
 
+use crate::{lexer::Lexer, token::TokenType};
+
 pub struct Repl {}
 
 impl Repl {
@@ -12,9 +14,17 @@ impl Repl {
         loop {
             print!(">> ");
             let _ = stdout().flush().unwrap();
+
             buffer.clear();
             stdin().read_line(&mut buffer).unwrap();
-            println!("{}", buffer);
+            let mut lexer = Lexer::new(&buffer);
+            loop {
+                let token = lexer.next_token();
+                if matches!(token.token_type, TokenType::EOF) {
+                    break;
+                }
+                println!("{:?}", token);
+            }
         }
     }
 }
