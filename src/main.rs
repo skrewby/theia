@@ -1,3 +1,8 @@
+use crate::repl::Repl;
+
+mod repl;
+
 fn main() {
-    println!("Hello, world!");
+    let interpreter = Repl::new();
+    interpreter.start();
 }
