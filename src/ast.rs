@@ -1,0 +1,61 @@
+use crate::token::Token;
+
+#[derive(Debug, PartialEq)]
+pub enum Statement {
+    Program(Vec<Statement>),
+    Var(VarStatement),
+    Return(Expression),
+    Expression(Expression),
+    Block(Vec<Statement>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Expression {
+    Identifier(String),
+    Int(u64),
+    Float(f64),
+    Prefix(PrefixExpression),
+    Infix(InfixExpression),
+    Boolean(bool),
+    If(IfExpression),
+    Function(FunctionExpression),
+    Call(CallExpression),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VarStatement {
+    pub identifier: Token,
+    pub expression: Expression,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct PrefixExpression {
+    pub operator: Token,
+    pub right: Box<Expression>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InfixExpression {
+    pub left: Box<Expression>,
+    pub operator: Token,
+    pub right: Box<Expression>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IfExpression {
+    pub condition: Box<Expression>,
+    pub consequence: Box<Statement>,
+    pub alternative: Option<Box<Statement>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionExpression {
+    pub parameters: Vec<Expression>,
+    pub body: Box<Statement>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CallExpression {
+    pub function: Box<Expression>,
+    pub args: Vec<Expression>,
+}
