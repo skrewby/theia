@@ -87,6 +87,11 @@ impl Lexer {
             ')' => TokenType::RParen,
             '{' => TokenType::LBrace,
             '}' => TokenType::RBrace,
+            '"' => {
+                self.pop_char();
+                let string = read_string(self);
+                return TokenType::Str(string);
+            }
             _ => {
                 if is_letter(ch) {
                     let identifier = read_while(self, is_letter);
@@ -137,6 +142,17 @@ fn read_number(lexer: &mut Lexer) -> String {
     }
 
     number
+}
+
+fn read_string(lexer: &mut Lexer) -> String {
+    let pos = lexer.position;
+    while lexer.ch.is_some_and(|ch| ch != '"') {
+        lexer.pop_char();
+    }
+
+    let string: String = lexer.input[pos..lexer.position].iter().collect();
+    lexer.pop_char();
+    string
 }
 
 fn get_identifier_token_type(identifier: &str) -> TokenType {
@@ -233,6 +249,17 @@ mod tests {
             Int(10000000),
         ];
 
+        let mut lexer = Lexer::new(input);
+        for expected in expected_types {
+            let token = lexer.next_token();
+            assert_eq!(token.token_type, expected);
+        }
+    }
+
+    #[test]
+    fn strings() {
+        let input = "\"Hello World\"";
+        let expected_types = vec![Str("Hello World".to_owned())];
         let mut lexer = Lexer::new(input);
         for expected in expected_types {
             let token = lexer.next_token();

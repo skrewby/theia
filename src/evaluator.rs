@@ -19,6 +19,7 @@ fn eval_expression(expr: &Expression, env: Rc<RefCell<Environment>>) -> Object {
     match expr {
         Expression::Int(val) => Object::Int(*val),
         Expression::Float(val) => Object::Float(*val),
+        Expression::Str(val) => Object::Str(val.clone()),
         Expression::Boolean(val) => Object::Boolean(*val),
         Expression::Prefix(prefix) => eval_prefix(prefix, env),
         Expression::Infix(infix) => eval_infix(infix, env),
@@ -206,6 +207,51 @@ fn eval_sum(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object {
                 Object::Float(*l + *r as f64)
             } else {
                 Object::Float(*l - *r as f64)
+            }
+        }
+        (Object::Str(l), Object::Str(r)) => {
+            if is_addition {
+                Object::Str(format!("{}{}", l, r))
+            } else {
+                Object::Error(
+                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
+                )
+            }
+        }
+        (Object::Int(l), Object::Str(r)) => {
+            if is_addition {
+                Object::Str(format!("{}{}", l, r))
+            } else {
+                Object::Error(
+                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
+                )
+            }
+        }
+        (Object::Str(l), Object::Int(r)) => {
+            if is_addition {
+                Object::Str(format!("{}{}", l, r))
+            } else {
+                Object::Error(
+                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
+                )
+            }
+        }
+        (Object::Float(l), Object::Str(r)) => {
+            if is_addition {
+                Object::Str(format!("{}{}", l, r))
+            } else {
+                Object::Error(
+                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
+                )
+            }
+        }
+        (Object::Str(l), Object::Float(r)) => {
+            if is_addition {
+                Object::Str(format!("{}{}", l, r))
+            } else {
+                Object::Error(
+                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
+                )
             }
         }
         _ => {
@@ -572,6 +618,27 @@ mod tests {
                 assert_eq!(obj, Object::Int(4));
             }
         }
+    }
+
+    #[test]
+    fn strings() {
+        let input = "
+            \"Goodbye\"
+            var foo = \"Hello\"
+            foo
+            var bar = \"World\"
+            foo + \" \" + bar
+            foo + 2
+        ";
+        let expected = vec![
+            Object::Str("Goodbye".to_owned()),
+            Object::Str("Hello".to_owned()),
+            Object::Str("Hello".to_owned()),
+            Object::Str("World".to_owned()),
+            Object::Str("Hello World".to_owned()),
+            Object::Str("Hello2".to_owned()),
+        ];
+        check_matches(input, &expected);
     }
 
     fn check_matches(input: &str, expected: &Vec<Object>) {

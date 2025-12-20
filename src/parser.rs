@@ -104,6 +104,7 @@ fn parse_prefix_expression(parser: &mut Parser) -> Option<Expression> {
         TokenType::LParen => parse_group(parser),
         TokenType::If => parse_if(parser),
         TokenType::Function => parse_fn_literal(parser),
+        TokenType::Str(_) => parse_string(parser),
         _ => None,
     }
 }
@@ -207,6 +208,14 @@ fn parse_float(parser: &mut Parser) -> Option<Expression> {
     };
 
     Some(Expression::Float(val))
+}
+
+fn parse_string(parser: &mut Parser) -> Option<Expression> {
+    let TokenType::Str(val) = &parser.current_token.token_type else {
+        return None;
+    };
+
+    Some(Expression::Str(val.clone()))
 }
 
 fn parse_prefix(parser: &mut Parser) -> Option<Expression> {
@@ -447,6 +456,20 @@ mod tests {
             1.23;
         ";
         let expected_expressions = vec![Expression::Int(5), Expression::Float(1.23)];
+        let statements = setup_test(&input, 2);
+        check_expressions_match(statements, expected_expressions);
+    }
+
+    #[test]
+    fn expression_strings() {
+        let input = "
+            \"Hello World\";
+            \"Goodbye\";
+        ";
+        let expected_expressions = vec![
+            Expression::Str("Hello World".to_owned()),
+            Expression::Str("Goodbye".to_owned()),
+        ];
         let statements = setup_test(&input, 2);
         check_expressions_match(statements, expected_expressions);
     }

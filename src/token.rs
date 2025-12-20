@@ -7,6 +7,7 @@ pub enum TokenType {
     Identifier(String),
     Int(i64),
     Float(f64),
+    Str(String),
 
     // Operators
     Assign,

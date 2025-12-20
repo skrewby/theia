@@ -10,6 +10,7 @@ use crate::{
 pub enum Object {
     Int(i64),
     Float(f64),
+    Str(String),
     Boolean(bool),
     Null,
     Return(Box<Object>),
@@ -35,6 +36,7 @@ impl Object {
         match self {
             Object::Int(val) => val.to_string(),
             Object::Float(val) => val.to_string(),
+            Object::Str(val) => val.clone(),
             Object::Boolean(val) => val.to_string(),
             Object::Null => "null".to_string(),
             Object::Error(val) => val.clone(),
@@ -61,6 +63,7 @@ impl Object {
             Object::Null => false,
             Object::Error(_) => false,
             Object::Function(_) => true,
+            Object::Str(_) => true,
             Object::Return(ret) => {
                 if matches!(**ret, Object::Return(_)) {
                     false

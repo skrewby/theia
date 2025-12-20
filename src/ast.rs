@@ -14,6 +14,7 @@ pub enum Expression {
     Identifier(String),
     Int(i64),
     Float(f64),
+    Str(String),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
     Boolean(bool),
