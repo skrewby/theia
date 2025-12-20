@@ -1,4 +1,6 @@
-use crate::repl::Repl;
+use std::env;
+
+use crate::{repl::Repl, runner::run_script};
 
 mod ast;
 mod environment;
@@ -7,9 +9,17 @@ mod lexer;
 mod object;
 mod parser;
 mod repl;
+mod runner;
 mod token;
 
 fn main() {
-    let interpreter = Repl::new();
-    interpreter.start();
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() > 1 {
+        let filename = &args[1];
+        run_script(filename);
+    } else {
+        let interpreter = Repl::new();
+        interpreter.start();
+    }
 }
