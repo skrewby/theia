@@ -6,6 +6,7 @@ use crate::{
         CallExpression, Expression, FunctionExpression, IfExpression, InfixExpression,
         PrefixExpression, Statement, VarStatement,
     },
+    builtin::{call_builtin, get_built_in},
     environment::Environment,
     object::{FunctionObject, Object},
     token::TokenType,
@@ -64,7 +65,10 @@ fn eval_infix(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object 
 fn eval_identifier(name: &str, env: Rc<RefCell<Environment>>) -> Object {
     match env.borrow().get(name) {
         Some(obj) => obj,
-        None => Object::Error(format!("Identifier not found: {:?}", name)),
+        None => match get_built_in(name) {
+            Some(function) => Object::BuiltIn(function),
+            None => Object::Error(format!("Identifier not found: {:?}", name)),
+        },
     }
 }
 
@@ -83,8 +87,10 @@ fn eval_call(call: &CallExpression, env: Rc<RefCell<Environment>>) -> Object {
 }
 
 fn apply_function(function: &Object, args: &Vec<Object>) -> Object {
-    let Object::Function(func) = function else {
-        return Object::Error("not a function".to_string());
+    let func = match function {
+        Object::Function(f) => f,
+        Object::BuiltIn(f) => return call_builtin(f, args),
+        _ => return Object::Error("not a function".to_string()),
     };
 
     let scoped_env = Rc::new(RefCell::new(Environment::enclosed(Rc::clone(&func.env))));
@@ -638,6 +644,15 @@ mod tests {
             Object::Str("Hello World".to_owned()),
             Object::Str("Hello2".to_owned()),
         ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn builtin() {
+        let input = "
+            len(\"Hello\")
+        ";
+        let expected = vec![Object::Int(5)];
         check_matches(input, &expected);
     }
 

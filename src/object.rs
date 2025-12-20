@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use crate::{
     ast::{Expression, Statement},
+    builtin::BuiltInFunction,
     environment::Environment,
 };
 
@@ -16,6 +17,7 @@ pub enum Object {
     Return(Box<Object>),
     Error(String),
     Function(FunctionObject),
+    BuiltIn(BuiltInFunction),
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +43,7 @@ impl Object {
             Object::Null => "null".to_string(),
             Object::Error(val) => val.clone(),
             Object::Function(_) => "function".to_owned(),
+            Object::BuiltIn(function) => format!("Built in function: {:?}", function),
             Object::Return(ret) => {
                 if matches!(**ret, Object::Return(_)) {
                     "Infinite loop".to_string()
@@ -63,6 +66,7 @@ impl Object {
             Object::Null => false,
             Object::Error(_) => false,
             Object::Function(_) => true,
+            Object::BuiltIn(_) => true,
             Object::Str(_) => true,
             Object::Return(ret) => {
                 if matches!(**ret, Object::Return(_)) {

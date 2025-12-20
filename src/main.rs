@@ -3,6 +3,7 @@ use std::env;
 use crate::{repl::Repl, runner::run_script};
 
 mod ast;
+mod builtin;
 mod environment;
 mod evaluator;
 mod lexer;
