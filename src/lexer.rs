@@ -160,12 +160,12 @@ fn get_number_token_type(number: &str) -> TokenType {
     };
 
     if num.starts_with("0x") || num.starts_with("0X") {
-        u64::from_str_radix(&num[2..], 16).map_or(TokenType::Illegal, TokenType::Int)
+        i64::from_str_radix(&num[2..], 16).map_or(TokenType::Illegal, TokenType::Int)
     } else if num.contains('.') {
         num.parse::<f64>()
             .map_or(TokenType::Illegal, TokenType::Float)
     } else {
-        num.parse::<u64>()
+        num.parse::<i64>()
             .map_or(TokenType::Illegal, TokenType::Int)
     }
 }

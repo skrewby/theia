@@ -1,6 +1,8 @@
+use std::cell::RefCell;
 use std::io::{Write, stdin, stdout};
+use std::rc::Rc;
 
-use crate::{ast::Statement, lexer::Lexer, parser::Parser};
+use crate::{environment::Environment, evaluator::evaluate, lexer::Lexer, parser::Parser};
 
 pub struct Repl {}
 
@@ -11,6 +13,8 @@ impl Repl {
 
     pub fn start(&self) {
         let mut buffer = String::new();
+        let environment = Rc::new(RefCell::new(Environment::new()));
+
         loop {
             print!(">> ");
             let _ = stdout().flush().unwrap();
@@ -23,15 +27,11 @@ impl Repl {
             let program = parser.parse_program();
             if parser.has_errors() {
                 parser.print_errors();
+                continue;
             }
 
-            let Statement::Program(statements) = program else {
-                panic!("parse_program needs to return a Statement::Program");
-            };
-
-            for statement in statements {
-                println!("{:?}", statement);
-            }
+            let obj = evaluate(&program, Rc::clone(&environment));
+            println!("{}", obj.inspect());
         }
     }
 }

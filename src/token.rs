@@ -5,7 +5,7 @@ pub enum TokenType {
 
     // Identifiers and literals
     Identifier(String),
-    Int(u64),
+    Int(i64),
     Float(f64),
 
     // Operators
@@ -39,6 +39,7 @@ pub enum TokenType {
     Else,
     Return,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
