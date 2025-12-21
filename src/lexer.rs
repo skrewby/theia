@@ -78,6 +78,8 @@ impl Lexer {
                 }
                 self.pop_char();
             }
+
+            return true;
         }
 
         false
@@ -114,10 +116,12 @@ impl Lexer {
             '}' => TokenType::RBrace,
             '[' => TokenType::LBracket,
             ']' => TokenType::RBracket,
-            '/' => match self.skip_comments() {
-                true => self.next_token().token_type,
-                false => TokenType::Slash,
-            },
+            '/' => {
+                if self.skip_comments() {
+                    return self.next_token().token_type;
+                }
+                TokenType::Slash
+            }
             '"' => {
                 self.pop_char();
                 let string = read_string(self);
@@ -303,6 +307,11 @@ mod tests {
     #[test]
     fn sample_program() {
         let input = "
+            /**
+*           *    Sample program
+*           **/
+
+            // This is a comment that should be ignored
             var five = 5;
             var ten = 10;
 
