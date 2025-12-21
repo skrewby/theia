@@ -56,3 +56,28 @@ print(arr + [10, 20])
 print(tail(arr, 2))
 print(first(arr))
 print(last(arr))
+
+// Loops
+print("")
+print("--- Loops ---")
+var i = 0;
+while i < 3 {
+    var i = i + 1
+    print(i)
+}
+print("Value of i outside of loop: " + i)
+// Loops are also expressions
+var i = 0
+var ret = while i < 10 {
+    var i = i + 1
+}
+print(ret)
+// And can be returned early through the break keyword
+var i = 0
+var ret = while i < 10 {
+    if i == 5 {
+        break i
+    }
+    var i = i + 1
+}
+print(ret)

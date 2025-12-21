@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
-        InfixExpression, PrefixExpression, Statement, VarStatement,
+        InfixExpression, PrefixExpression, Statement, VarStatement, WhileExpression,
     },
     lexer::Lexer,
     token::{Token, TokenType},
@@ -91,6 +91,7 @@ fn parse_statement(parser: &mut Parser) -> Option<Statement> {
     match parser.current_token.token_type {
         TokenType::Variable => parse_var_statement(parser),
         TokenType::Return => parse_return_statement(parser),
+        TokenType::Break => parse_break_statement(parser),
         _ => parse_expression_statement(parser),
     }
 }
@@ -104,6 +105,7 @@ fn parse_prefix_expression(parser: &mut Parser) -> Option<Expression> {
         TokenType::True | TokenType::False => parse_boolean(parser),
         TokenType::LParen => parse_group(parser),
         TokenType::If => parse_if(parser),
+        TokenType::While => parse_while(parser),
         TokenType::Function => parse_fn_literal(parser),
         TokenType::Str(_) => parse_string(parser),
         TokenType::LBracket => parse_array(parser),
@@ -164,6 +166,17 @@ fn parse_return_statement(parser: &mut Parser) -> Option<Statement> {
     }
 
     Some(Statement::Return(val))
+}
+
+fn parse_break_statement(parser: &mut Parser) -> Option<Statement> {
+    parser.next_token();
+    let val = parse_expression(parser, Precedence::Lowest)?;
+
+    if matches!(parser.peek_token.token_type, TokenType::Semicolon) {
+        parser.next_token();
+    }
+
+    Some(Statement::Break(val))
 }
 
 fn parse_expression_statement(parser: &mut Parser) -> Option<Statement> {
@@ -284,6 +297,19 @@ fn parse_if(parser: &mut Parser) -> Option<Expression> {
         condition: Box::new(condition),
         consequence: Box::new(consequence),
         alternative,
+    }))
+}
+
+fn parse_while(parser: &mut Parser) -> Option<Expression> {
+    parser.next_token();
+    let condition = parse_expression(parser, Precedence::Lowest)?;
+
+    parser.peek_expected(TokenType::LBrace)?;
+    let body = parse_block(parser)?;
+
+    Some(Expression::While(WhileExpression {
+        condition: Box::new(condition),
+        body: Box::new(body),
     }))
 }
 
@@ -858,6 +884,24 @@ mod tests {
         ];
 
         let statements = setup_test(&input, 2);
+        check_expressions_match(statements, expected_expressions);
+    }
+
+    #[test]
+    fn while_loops() {
+        let input = "
+            while true {
+                5
+            }
+        ";
+        let expected_expressions = vec![Expression::While(WhileExpression {
+            condition: Box::new(Expression::Boolean(true)),
+            body: Box::new(Statement::Block(vec![Statement::Expression(
+                Expression::Int(5),
+            )])),
+        })];
+
+        let statements = setup_test(&input, 1);
         check_expressions_match(statements, expected_expressions);
     }
 

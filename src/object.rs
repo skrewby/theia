@@ -15,6 +15,7 @@ pub enum Object {
     Boolean(bool),
     Null,
     Return(Box<Object>),
+    Break(Box<Object>),
     Error(String),
     Function(FunctionObject),
     BuiltIn(BuiltInFunction),
@@ -56,6 +57,7 @@ impl Object {
                     ret.inspect()
                 }
             }
+            Object::Break(val) => val.inspect(),
         }
     }
 
@@ -81,6 +83,7 @@ impl Object {
                     ret.bool_value()
                 }
             }
+            Object::Break(val) => val.bool_value(),
         }
     }
 

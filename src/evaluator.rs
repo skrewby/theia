@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::{
     ast::{
         CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
-        InfixExpression, PrefixExpression, Statement, VarStatement,
+        InfixExpression, PrefixExpression, Statement, VarStatement, WhileExpression,
     },
     builtin::{call_builtin, get_built_in},
     environment::Environment,
@@ -25,6 +25,7 @@ fn eval_expression(expr: &Expression, env: Rc<RefCell<Environment>>) -> Object {
         Expression::Prefix(prefix) => eval_prefix(prefix, env),
         Expression::Infix(infix) => eval_infix(infix, env),
         Expression::If(if_expression) => eval_if(if_expression, env),
+        Expression::While(while_expression) => eval_while(while_expression, env),
         Expression::Identifier(name) => eval_identifier(name, env),
         Expression::Function(function) => eval_function(function, env),
         Expression::Call(call) => eval_call(call, env),
@@ -37,6 +38,7 @@ fn eval_statement(stmt: &Statement, env: Rc<RefCell<Environment>>) -> Object {
     match stmt {
         Statement::Expression(expr) => eval_expression(expr, env),
         Statement::Return(expr) => Object::Return(Box::new(eval_expression(expr, Rc::clone(&env)))),
+        Statement::Break(expr) => Object::Break(Box::new(eval_expression(expr, Rc::clone(&env)))),
         Statement::Program(statements) => eval_statements(statements, env),
         Statement::Block(statements) => eval_block(statements, env),
         Statement::Var(statement) => eval_var(statement, env),
@@ -195,10 +197,10 @@ fn eval_block(statements: &Vec<Statement>, env: Rc<RefCell<Environment>>) -> Obj
     let mut result = Object::Null;
     for statement in statements {
         result = eval_statement(statement, Rc::clone(&env));
-        if matches!(result, Object::Return(_)) {
-            return result;
-        }
-        if matches!(result, Object::Error(_)) {
+        if matches!(
+            result,
+            Object::Return(_) | Object::Break(_) | Object::Error(_)
+        ) {
             return result;
         }
     }
@@ -232,6 +234,33 @@ fn eval_if(if_expression: &IfExpression, env: Rc<RefCell<Environment>>) -> Objec
         eval_statement(alt, env)
     } else {
         Object::Null
+    }
+}
+
+fn eval_while(while_expression: &WhileExpression, env: Rc<RefCell<Environment>>) -> Object {
+    let mut last_result = Object::Null;
+
+    loop {
+        let condition = eval_expression(&while_expression.condition, Rc::clone(&env));
+        if matches!(condition, Object::Error(_)) {
+            return condition;
+        }
+
+        if !condition.bool_value() {
+            return last_result;
+        }
+
+        let result = eval_statement(&while_expression.body, Rc::clone(&env));
+
+        if let Object::Break(val) = result {
+            return *val;
+        }
+
+        if matches!(result, Object::Return(_) | Object::Error(_)) {
+            return result;
+        }
+
+        last_result = result;
     }
 }
 
@@ -747,6 +776,41 @@ mod tests {
                 Object::Int(5),
             ]),
             Object::Array(vec![Object::Int(3), Object::Int(4), Object::Int(5)]),
+        ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn while_loop() {
+        let input = "
+            var i = 0
+            while i < 3 {
+                var i = i + 1
+            }
+
+            var i = 0
+            while i < 10 {
+                var i = i + 1
+                if i == 6 {
+                    break i
+                }
+            }
+
+            var i = 0
+            while i < 10 {
+                if i == 5 {
+                    break i
+                }
+                var i = i + 1
+            }
+        ";
+        let expected = vec![
+            Object::Int(0),
+            Object::Int(3),
+            Object::Int(0),
+            Object::Int(6),
+            Object::Int(0),
+            Object::Int(5),
         ];
         check_matches(input, &expected);
     }

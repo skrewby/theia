@@ -5,6 +5,7 @@ pub enum Statement {
     Program(Vec<Statement>),
     Var(VarStatement),
     Return(Expression),
+    Break(Expression),
     Expression(Expression),
     Block(Vec<Statement>),
 }
@@ -19,6 +20,7 @@ pub enum Expression {
     Infix(InfixExpression),
     Boolean(bool),
     If(IfExpression),
+    While(WhileExpression),
     Function(FunctionExpression),
     Call(CallExpression),
     Array(Vec<Expression>),
@@ -67,4 +69,10 @@ pub struct FunctionExpression {
 pub struct CallExpression {
     pub function: Box<Expression>,
     pub args: Vec<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WhileExpression {
+    pub condition: Box<Expression>,
+    pub body: Box<Statement>,
 }

@@ -199,6 +199,8 @@ fn get_identifier_token_type(identifier: &str) -> TokenType {
         "if" => TokenType::If,
         "else" => TokenType::Else,
         "return" => TokenType::Return,
+        "while" => TokenType::While,
+        "break" => TokenType::Break,
         _ => TokenType::Identifier(identifier.to_owned()),
     }
 }

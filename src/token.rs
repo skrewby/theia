@@ -41,6 +41,8 @@ pub enum TokenType {
     If,
     Else,
     Return,
+    While,
+    Break,
 }
 
 #[derive(Debug, Clone, PartialEq)]
