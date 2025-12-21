@@ -57,6 +57,32 @@ impl Lexer {
         }
     }
 
+    fn skip_comments(&mut self) -> bool {
+        if self.peek_char().is_some_and(|ch| ch == '/') {
+            while self.ch.is_some_and(|ch| ch != '\n') {
+                self.pop_char();
+            }
+            self.pop_char();
+            return true;
+        }
+
+        if self.peek_char().is_some_and(|ch| ch == '*') {
+            self.pop_char();
+            self.pop_char();
+
+            while self.ch.is_some() {
+                if self.ch == Some('*') && self.peek_char() == Some('/') {
+                    self.pop_char();
+                    self.pop_char();
+                    return true;
+                }
+                self.pop_char();
+            }
+        }
+
+        false
+    }
+
     fn get_token_type(&mut self, ch: char) -> TokenType {
         let token = match ch {
             '=' => {
@@ -77,7 +103,6 @@ impl Lexer {
                     TokenType::Bang
                 }
             }
-            '/' => TokenType::Slash,
             '*' => TokenType::Asterisk,
             '<' => TokenType::LessThan,
             '>' => TokenType::GreaterThan,
@@ -89,6 +114,10 @@ impl Lexer {
             '}' => TokenType::RBrace,
             '[' => TokenType::LBracket,
             ']' => TokenType::RBracket,
+            '/' => match self.skip_comments() {
+                true => self.next_token().token_type,
+                false => TokenType::Slash,
+            },
             '"' => {
                 self.pop_char();
                 let string = read_string(self);
@@ -277,10 +306,14 @@ mod tests {
             var five = 5;
             var ten = 10;
 
+            /*
+            * This is a multiblock comment that should be ignored
+            */
             var add = fn(x, y) {
                 x + y - 8;
             };
 
+            // This is a comment that should be ignored
             var result = add(five, ten);
 
             var foo = 5 * 20 / 100;
