@@ -62,6 +62,7 @@ fn eval_infix(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object 
         TokenType::NotEqual => eval_inequality(infix, env),
         TokenType::GreaterThan => eval_gt(infix, env),
         TokenType::LessThan => eval_lt(infix, env),
+        TokenType::Assign => eval_assign(infix, env),
         _ => Object::Null,
     }
 }
@@ -74,6 +75,28 @@ fn eval_identifier(name: &str, env: Rc<RefCell<Environment>>) -> Object {
             None => Object::Error(format!("Identifier not found: {:?}", name)),
         },
     }
+}
+
+fn eval_assign(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object {
+    let Expression::Identifier(ref name) = *infix.left else {
+        return Object::Error(format!(
+            "Only able to bind values to identifiers. Attempted with {:?}",
+            infix.left
+        ));
+    };
+
+    let identifier = eval_identifier(&name, Rc::clone(&env));
+    if matches!(identifier, Object::Error(_)) {
+        return identifier;
+    }
+
+    let right = eval_expression(&infix.right, Rc::clone(&env));
+    if matches!(right, Object::Error(_)) {
+        return right;
+    }
+
+    env.borrow_mut().set(name.clone(), right.clone());
+    right
 }
 
 fn eval_index(index_expression: &IndexExpression, env: Rc<RefCell<Environment>>) -> Object {
@@ -842,6 +865,17 @@ mod tests {
                 Object::Int(7),
             ]),
         ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn assign_existing_var() {
+        let input = "
+            var foo = 5
+            foo = 8
+            foo
+        ";
+        let expected = vec![Object::Int(5), Object::Int(8), Object::Int(8)];
         check_matches(input, &expected);
     }
 

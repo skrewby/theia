@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 enum Precedence {
     Lowest,
+    Assign,
     Equals,
     LessGreater,
     Sum,
@@ -117,6 +118,7 @@ fn parse_infix_expression(parser: &mut Parser, left: Expression) -> Option<Expre
     match parser.current_token.token_type {
         TokenType::Plus
         | TokenType::Minus
+        | TokenType::Assign
         | TokenType::Slash
         | TokenType::Asterisk
         | TokenType::Equal
@@ -449,6 +451,7 @@ fn parse_index(parser: &mut Parser, left: Expression) -> Option<Expression> {
 
 fn token_precedence(token: &TokenType) -> Precedence {
     match token {
+        TokenType::Assign => Precedence::Assign,
         TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
         TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
         TokenType::Plus | TokenType::Minus => Precedence::Sum,
@@ -899,6 +902,23 @@ mod tests {
             body: Box::new(Statement::Block(vec![Statement::Expression(
                 Expression::Int(5),
             )])),
+        })];
+
+        let statements = setup_test(&input, 1);
+        check_expressions_match(statements, expected_expressions);
+    }
+
+    #[test]
+    fn variable_assign() {
+        let input = "
+            foo = 3
+        ";
+        let expected_expressions = vec![Expression::Infix(InfixExpression {
+            left: Box::new(Expression::Identifier("foo".to_owned())),
+            operator: Token {
+                token_type: TokenType::Assign,
+            },
+            right: Box::new(Expression::Int(3)),
         })];
 
         let statements = setup_test(&input, 1);
