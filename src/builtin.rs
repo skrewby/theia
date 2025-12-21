@@ -127,10 +127,7 @@ fn builtin_print(args: &Vec<Object>) -> Object {
             args.len()
         ));
     }
-    let Object::Str(s) = &args[0] else {
-        return Object::Error(format!("print: argument not supported, got {:?}", args[0]));
-    };
 
-    println!("{}", s);
+    println!("{}", &args[0].inspect());
     Object::Null
 }
