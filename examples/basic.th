@@ -1,0 +1,58 @@
+/**
+* Basic program
+*   Simple program showing various functionalities one usually expects
+*   from a programming language
+*/
+
+// Create a variable
+var foo = "Hello World";
+
+// Semicolons are optional
+var bar = 12
+
+// Create a function
+var my_function = fn(x) {
+    // Call an inbuilt function
+    print(x)
+}
+my_function(foo)
+
+// Closures
+var order = fn(quantity, item) {
+    // String concatenation
+    print("I would like " + quantity + " " + item)
+}
+var order_pies = fn(quantity) {
+    order(quantity, "Pies")
+}
+order_pies(bar)
+
+// If expressions
+if bar == 12 {
+    print("bar is 12")
+} else {
+    print("bar is not 12")
+}
+
+// If expressions can also be bound to a variable
+var stress = 10
+var qty = if stress > 5 {
+    print("Cheat day")
+    // You do not need an explicit return, it will use the last evaluated expression
+    20
+} else {
+    1
+}
+order_pies(qty)
+
+// Arrays
+var arr = [1, 2 * 2, "Hello"];
+print("")
+print("--- Arrays ---")
+print("Length of arr: " + len(arr))
+// They are immutable and operations on them will return a new copy of the array
+print(arr + 12)
+print(arr + [10, 20])
+print(tail(arr, 2))
+print(first(arr))
+print(last(arr))
