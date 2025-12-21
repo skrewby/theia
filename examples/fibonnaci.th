@@ -20,14 +20,16 @@ var fib_iter = fn(n) {
     var previous_two = 1
     var next = 0
     var i = 1
-    while i < (n + 1) {
+    var result = while i < (n + 1) {
         var next = previous + previous_two
         var previous_two = previous
         var previous = next
         var i = i + 1
+
+        previous
     }
 
-    previous
+    result
 }
 
 print(fib_recurse(10))
