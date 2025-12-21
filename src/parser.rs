@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        CallExpression, Expression, FunctionExpression, IfExpression, InfixExpression,
-        PrefixExpression, Statement, VarStatement,
+        CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
+        InfixExpression, PrefixExpression, Statement, VarStatement,
     },
     lexer::Lexer,
     token::{Token, TokenType},
@@ -16,6 +16,7 @@ enum Precedence {
     Product,
     Prefix,
     Call,
+    Index,
 }
 
 pub struct Parser {
@@ -105,6 +106,7 @@ fn parse_prefix_expression(parser: &mut Parser) -> Option<Expression> {
         TokenType::If => parse_if(parser),
         TokenType::Function => parse_fn_literal(parser),
         TokenType::Str(_) => parse_string(parser),
+        TokenType::LBracket => parse_array(parser),
         _ => None,
     }
 }
@@ -120,6 +122,7 @@ fn parse_infix_expression(parser: &mut Parser, left: Expression) -> Option<Expre
         | TokenType::LessThan
         | TokenType::GreaterThan => parse_infix(parser, left),
         TokenType::LParen => parse_call(parser, left),
+        TokenType::LBracket => parse_index(parser, left),
         _ => None,
     }
 }
@@ -376,6 +379,48 @@ fn parse_call_args(parser: &mut Parser) -> Option<Vec<Expression>> {
     Some(args)
 }
 
+fn parse_array(parser: &mut Parser) -> Option<Expression> {
+    let elements = parse_expression_list(parser, TokenType::RBracket)?;
+
+    Some(Expression::Array(elements))
+}
+
+fn parse_expression_list(parser: &mut Parser, end: TokenType) -> Option<Vec<Expression>> {
+    let mut list = Vec::new();
+
+    if parser.peek_token.token_type == end {
+        parser.next_token();
+        return Some(list);
+    }
+
+    parser.next_token();
+    list.push(parse_expression(parser, Precedence::Lowest)?);
+
+    while matches!(parser.peek_token.token_type, TokenType::Comma) {
+        parser.next_token();
+        parser.next_token();
+        list.push(parse_expression(parser, Precedence::Lowest)?);
+    }
+
+    parser.peek_expected(end)?;
+    parser.next_token();
+
+    Some(list)
+}
+
+fn parse_index(parser: &mut Parser, left: Expression) -> Option<Expression> {
+    parser.next_token();
+    let index = parse_expression(parser, Precedence::Lowest)?;
+
+    parser.peek_expected(TokenType::RBracket)?;
+    parser.next_token();
+
+    Some(Expression::Index(IndexExpression {
+        left: Box::new(left),
+        index: Box::new(index),
+    }))
+}
+
 fn token_precedence(token: &TokenType) -> Precedence {
     match token {
         TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
@@ -383,6 +428,7 @@ fn token_precedence(token: &TokenType) -> Precedence {
         TokenType::Plus | TokenType::Minus => Precedence::Sum,
         TokenType::Slash | TokenType::Asterisk => Precedence::Product,
         TokenType::LParen => Precedence::Call,
+        TokenType::LBracket => Precedence::Index,
         _ => Precedence::Lowest,
     }
 }
@@ -783,6 +829,35 @@ mod tests {
         })];
 
         let statements = setup_test(&input, 1);
+        check_expressions_match(statements, expected_expressions);
+    }
+
+    #[test]
+    fn arrays() {
+        let input = "
+            [1, 2 * 2, 5]
+            foo[2]
+        ";
+
+        let expected_expressions = vec![
+            Expression::Array(vec![
+                Expression::Int(1),
+                Expression::Infix(InfixExpression {
+                    left: Box::new(Expression::Int(2)),
+                    operator: Token {
+                        token_type: TokenType::Asterisk,
+                    },
+                    right: Box::new(Expression::Int(2)),
+                }),
+                Expression::Int(5),
+            ]),
+            Expression::Index(IndexExpression {
+                left: Box::new(Expression::Identifier("foo".to_owned())),
+                index: Box::new(Expression::Int(2)),
+            }),
+        ];
+
+        let statements = setup_test(&input, 2);
         check_expressions_match(statements, expected_expressions);
     }
 

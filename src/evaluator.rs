@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use crate::{
     ast::{
-        CallExpression, Expression, FunctionExpression, IfExpression, InfixExpression,
-        PrefixExpression, Statement, VarStatement,
+        CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
+        InfixExpression, PrefixExpression, Statement, VarStatement,
     },
     builtin::{call_builtin, get_built_in},
     environment::Environment,
@@ -28,6 +28,8 @@ fn eval_expression(expr: &Expression, env: Rc<RefCell<Environment>>) -> Object {
         Expression::Identifier(name) => eval_identifier(name, env),
         Expression::Function(function) => eval_function(function, env),
         Expression::Call(call) => eval_call(call, env),
+        Expression::Array(expressions) => eval_array(expressions, env),
+        Expression::Index(index_expression) => eval_index(index_expression, env),
     }
 }
 
@@ -70,6 +72,59 @@ fn eval_identifier(name: &str, env: Rc<RefCell<Environment>>) -> Object {
             None => Object::Error(format!("Identifier not found: {:?}", name)),
         },
     }
+}
+
+fn eval_index(index_expression: &IndexExpression, env: Rc<RefCell<Environment>>) -> Object {
+    let left = eval_expression(&index_expression.left, Rc::clone(&env));
+    if matches!(left, Object::Error(_)) {
+        return left;
+    }
+
+    let index = eval_expression(&index_expression.index, Rc::clone(&env));
+    if matches!(index, Object::Error(_)) {
+        return index;
+    }
+
+    eval_index_expression(left, index)
+}
+
+fn eval_index_expression(left: Object, index: Object) -> Object {
+    let Object::Int(i) = index else {
+        return Object::Error(format!(
+            "Only able to index with integer value. Attempted with {:?}",
+            index
+        ));
+    };
+    if i < 0 {
+        return Object::Error(format!(
+            "Only able to index with positive integer values. Attempted with {:?}",
+            index
+        ));
+    }
+
+    match left {
+        Object::Array(arr) => eval_array_index(arr, i),
+        _ => Object::Error(format!(
+            "Only able to index arrays. Attempted with {:?}",
+            left
+        )),
+    }
+}
+
+fn eval_array_index(array: Vec<Object>, index: i64) -> Object {
+    if index as usize >= array.len() {
+        return Object::Null;
+    }
+    return array[index as usize].clone();
+}
+
+fn eval_array(expressions: &Vec<Expression>, env: Rc<RefCell<Environment>>) -> Object {
+    let elements = eval_arg_expressions(expressions, env);
+    if elements.len() == 1 && matches!(elements[0], Object::Error(_)) {
+        return elements[0].clone();
+    }
+
+    Object::Array(elements)
 }
 
 fn eval_call(call: &CallExpression, env: Rc<RefCell<Environment>>) -> Object {
@@ -648,11 +703,77 @@ mod tests {
     }
 
     #[test]
-    fn builtin() {
+    fn builtin_len() {
         let input = "
             len(\"Hello\")
         ";
         let expected = vec![Object::Int(5)];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn builtin_first() {
+        let input = "
+            var foo = [1, 2, 3]
+            first(foo)
+        ";
+        let expected = vec![
+            Object::Array(vec![Object::Int(1), Object::Int(2), Object::Int(3)]),
+            Object::Int(1),
+        ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn builtin_last() {
+        let input = "
+            var foo = [1, 2, 3, 4, 5]
+            last(foo)
+        ";
+        let expected = vec![
+            Object::Array(vec![
+                Object::Int(1),
+                Object::Int(2),
+                Object::Int(3),
+                Object::Int(4),
+                Object::Int(5),
+            ]),
+            Object::Int(5),
+        ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn builtin_tail() {
+        let input = "
+            var foo = [1, 2, 3, 4, 5]
+            tail(foo, 3)
+        ";
+        let expected = vec![
+            Object::Array(vec![
+                Object::Int(1),
+                Object::Int(2),
+                Object::Int(3),
+                Object::Int(4),
+                Object::Int(5),
+            ]),
+            Object::Array(vec![Object::Int(3), Object::Int(4), Object::Int(5)]),
+        ];
+        check_matches(input, &expected);
+    }
+
+    #[test]
+    fn arrays() {
+        let input = "
+            var foo = [1, 2 * 2]
+            foo[1]
+            len(foo)
+        ";
+        let expected = vec![
+            Object::Array(vec![Object::Int(1), Object::Int(4)]),
+            Object::Int(4),
+            Object::Int(2),
+        ];
         check_matches(input, &expected);
     }
 

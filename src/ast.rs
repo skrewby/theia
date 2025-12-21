@@ -21,6 +21,8 @@ pub enum Expression {
     If(IfExpression),
     Function(FunctionExpression),
     Call(CallExpression),
+    Array(Vec<Expression>),
+    Index(IndexExpression),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -40,6 +42,12 @@ pub struct InfixExpression {
     pub left: Box<Expression>,
     pub operator: Token,
     pub right: Box<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IndexExpression {
+    pub left: Box<Expression>,
+    pub index: Box<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

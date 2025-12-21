@@ -87,6 +87,8 @@ impl Lexer {
             ')' => TokenType::RParen,
             '{' => TokenType::LBrace,
             '}' => TokenType::RBrace,
+            '[' => TokenType::LBracket,
+            ']' => TokenType::RBracket,
             '"' => {
                 self.pop_char();
                 let string = read_string(self);
@@ -205,7 +207,7 @@ mod tests {
 
     #[test]
     fn simple_tokens() {
-        let input = "=+-!*/(){},;<>===!==";
+        let input = "=+-!*/(){}[],;<>===!==";
         let expected_types = vec![
             Assign,
             Plus,
@@ -217,6 +219,8 @@ mod tests {
             RParen,
             LBrace,
             RBrace,
+            LBracket,
+            RBracket,
             Comma,
             Semicolon,
             LessThan,

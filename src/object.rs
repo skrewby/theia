@@ -18,6 +18,7 @@ pub enum Object {
     Error(String),
     Function(FunctionObject),
     BuiltIn(BuiltInFunction),
+    Array(Vec<Object>),
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +45,10 @@ impl Object {
             Object::Error(val) => val.clone(),
             Object::Function(_) => "function".to_owned(),
             Object::BuiltIn(function) => format!("Built in function: {:?}", function),
+            Object::Array(objects) => {
+                let elements: Vec<String> = objects.iter().map(|obj| obj.inspect()).collect();
+                format!("[{}]", elements.join(", "))
+            }
             Object::Return(ret) => {
                 if matches!(**ret, Object::Return(_)) {
                     "Infinite loop".to_string()
@@ -68,6 +73,7 @@ impl Object {
             Object::Function(_) => true,
             Object::BuiltIn(_) => true,
             Object::Str(_) => true,
+            Object::Array(objects) => objects.iter().all(|obj| obj.bool_value()),
             Object::Return(ret) => {
                 if matches!(**ret, Object::Return(_)) {
                     false
