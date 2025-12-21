@@ -239,93 +239,82 @@ fn eval_sum(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object {
     let left = eval_expression(&infix.left, Rc::clone(&env));
     let right = eval_expression(&infix.right, env);
 
-    let is_addition = infix.operator.token_type == TokenType::Plus;
+    match infix.operator.token_type == TokenType::Plus {
+        true => eval_addition(&left, &right),
+        false => eval_subtraction(&left, &right),
+    }
+}
 
+fn eval_addition(left: &Object, right: &Object) -> Object {
     match (&left, &right) {
-        (Object::Int(l), Object::Int(r)) => {
-            if is_addition {
-                Object::Int(*l + *r)
-            } else {
-                Object::Int(*l - *r)
-            }
+        (Object::Int(_) | Object::Float(_), Object::Int(_) | Object::Float(_)) => {
+            eval_sum_numbers(&left, &right, true)
         }
+        _ if (matches!(&left, Object::Array(_)) || matches!(&right, Object::Array(_))) => {
+            eval_concat_array(&left, &right)
+        }
+        _ if (matches!(&left, Object::Str(_)) || matches!(&right, Object::Str(_))) => {
+            Object::Str(format!("{}{}", left.inspect(), right.inspect()))
+        }
+        _ => Object::Error(format!(
+            "Type mismatch: {} + {}",
+            left.inspect(),
+            right.inspect()
+        )),
+    }
+}
+
+fn eval_subtraction(left: &Object, right: &Object) -> Object {
+    match (&left, &right) {
+        (Object::Int(_) | Object::Float(_), Object::Int(_) | Object::Float(_)) => {
+            eval_sum_numbers(&left, &right, false)
+        }
+        _ => Object::Error(format!(
+            "Type mismatch: {} - {}",
+            left.inspect(),
+            right.inspect()
+        )),
+    }
+}
+
+fn eval_sum_numbers(left: &Object, right: &Object, is_addition: bool) -> Object {
+    match (left, right) {
+        (Object::Int(l), Object::Int(r)) => Object::Int(if is_addition { l + r } else { l - r }),
         (Object::Float(l), Object::Float(r)) => {
-            if is_addition {
-                Object::Float(*l + *r)
-            } else {
-                Object::Float(*l - *r)
-            }
+            Object::Float(if is_addition { l + r } else { l - r })
         }
-        (Object::Int(l), Object::Float(r)) => {
-            if is_addition {
-                Object::Float(*l as f64 + *r)
-            } else {
-                Object::Float(*l as f64 - *r)
-            }
+        (Object::Int(l), Object::Float(r)) => Object::Float(if is_addition {
+            *l as f64 + r
+        } else {
+            *l as f64 - r
+        }),
+        (Object::Float(l), Object::Int(r)) => Object::Float(if is_addition {
+            l + *r as f64
+        } else {
+            l - *r as f64
+        }),
+        _ => unreachable!(),
+    }
+}
+
+fn eval_concat_array(left: &Object, right: &Object) -> Object {
+    match (left, right) {
+        (Object::Array(l), Object::Array(r)) => {
+            let mut result = l.clone();
+            result.extend(r.clone());
+            Object::Array(result)
         }
-        (Object::Float(l), Object::Int(r)) => {
-            if is_addition {
-                Object::Float(*l + *r as f64)
-            } else {
-                Object::Float(*l - *r as f64)
-            }
+        (Object::Array(l), r) => {
+            let mut result = l.clone();
+            result.push(r.clone());
+            Object::Array(result)
         }
-        (Object::Str(l), Object::Str(r)) => {
-            if is_addition {
-                Object::Str(format!("{}{}", l, r))
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
+        (l, Object::Array(r)) => {
+            let mut result = vec![l.clone()];
+            result.extend(r.clone());
+            Object::Array(result)
         }
-        (Object::Int(l), Object::Str(r)) => {
-            if is_addition {
-                Object::Str(format!("{}{}", l, r))
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
-        }
-        (Object::Str(l), Object::Int(r)) => {
-            if is_addition {
-                Object::Str(format!("{}{}", l, r))
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
-        }
-        (Object::Float(l), Object::Str(r)) => {
-            if is_addition {
-                Object::Str(format!("{}{}", l, r))
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
-        }
-        (Object::Str(l), Object::Float(r)) => {
-            if is_addition {
-                Object::Str(format!("{}{}", l, r))
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
-        }
-        _ => {
-            if is_addition {
-                Object::Error(
-                    format!("Type mismatch: {} + {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            } else {
-                Object::Error(
-                    format!("Type mismatch: {} - {}", left.inspect(), right.inspect()).to_owned(),
-                )
-            }
-        }
+        _ => unreachable!(),
     }
 }
 
@@ -768,11 +757,26 @@ mod tests {
             var foo = [1, 2 * 2]
             foo[1]
             len(foo)
+            var bar = foo + [5, 6]
+            bar + 7
         ";
         let expected = vec![
             Object::Array(vec![Object::Int(1), Object::Int(4)]),
             Object::Int(4),
             Object::Int(2),
+            Object::Array(vec![
+                Object::Int(1),
+                Object::Int(4),
+                Object::Int(5),
+                Object::Int(6),
+            ]),
+            Object::Array(vec![
+                Object::Int(1),
+                Object::Int(4),
+                Object::Int(5),
+                Object::Int(6),
+                Object::Int(7),
+            ]),
         ];
         check_matches(input, &expected);
     }

@@ -123,12 +123,12 @@ fn builtin_last(args: &Vec<Object>) -> Object {
 fn builtin_print(args: &Vec<Object>) -> Object {
     if args.len() != 1 {
         return Object::Error(format!(
-            "len: wrong number of arguments, expected 1 but got {}",
+            "print: wrong number of arguments, expected 1 but got {}",
             args.len()
         ));
     }
     let Object::Str(s) = &args[0] else {
-        return Object::Error(format!("len: argument not supported, got {:?}", args[0]));
+        return Object::Error(format!("print: argument not supported, got {:?}", args[0]));
     };
 
     println!("{}", s);
