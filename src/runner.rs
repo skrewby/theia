@@ -25,7 +25,7 @@ pub fn run_script(filename: &str) {
     let result = evaluate(&program, env);
 
     match result {
-        Object::Null => {}
-        _ => println!("{}", result.inspect()),
+        Object::Error(s) => println!("{}", s),
+        _ => {}
     }
 }
