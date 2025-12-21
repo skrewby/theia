@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::environment::Environment;
 use crate::evaluator::evaluate;
 use crate::lexer::Lexer;
+use crate::object::Object;
 use crate::parser::Parser;
 
 pub fn run_script(filename: &str) {
@@ -23,5 +24,8 @@ pub fn run_script(filename: &str) {
     let env = Rc::new(RefCell::new(Environment::new()));
     let result = evaluate(&program, env);
 
-    println!("{}", result.inspect());
+    match result {
+        Object::Null => {}
+        _ => println!("{}", result.inspect()),
+    }
 }
