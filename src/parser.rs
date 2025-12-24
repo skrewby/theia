@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
-        InfixExpression, PrefixExpression, Statement, VarStatement, WhileExpression,
+        InfixExpression, LetStatement, PrefixExpression, Statement, WhileExpression,
     },
     lexer::Lexer,
     token::{Token, TokenType},
@@ -90,7 +90,7 @@ impl Parser {
 
 fn parse_statement(parser: &mut Parser) -> Option<Statement> {
     match parser.current_token.token_type {
-        TokenType::Variable => parse_var_statement(parser),
+        TokenType::Variable => parse_let_statement(parser),
         TokenType::Return => parse_return_statement(parser),
         TokenType::Break => parse_break_statement(parser),
         _ => parse_expression_statement(parser),
@@ -131,7 +131,7 @@ fn parse_infix_expression(parser: &mut Parser, left: Expression) -> Option<Expre
     }
 }
 
-fn parse_var_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_let_statement(parser: &mut Parser) -> Option<Statement> {
     if !matches!(parser.peek_token.token_type, TokenType::Identifier(_)) {
         let msg = format!(
             "Expected identifier but got {:?}",
@@ -153,7 +153,7 @@ fn parse_var_statement(parser: &mut Parser) -> Option<Statement> {
         parser.next_token();
     }
 
-    Some(Statement::Var(VarStatement {
+    Some(Statement::VariableAssign(LetStatement {
         identifier,
         expression,
     }))
@@ -471,8 +471,8 @@ mod tests {
     #[test]
     fn var_statements() {
         let input = "
-            var foo = 5;
-            var bar = 100;
+            let foo = 5;
+            let bar = 100;
         ";
         let expected_identifiers = vec![
             TokenType::Identifier("foo".to_owned()),
@@ -482,7 +482,7 @@ mod tests {
 
         for (i, statement) in statements.iter().enumerate() {
             match statement {
-                Statement::Var(VarStatement {
+                Statement::VariableAssign(LetStatement {
                     identifier,
                     expression: _,
                 }) => {
@@ -735,20 +735,20 @@ mod tests {
         let input = "
             true;
             false;
-            var foo = true;
-            var bar = false;
+            let foo = true;
+            let bar = false;
         ";
 
         let expected_statements = vec![
             Statement::Expression(Expression::Boolean(true)),
             Statement::Expression(Expression::Boolean(false)),
-            Statement::Var(VarStatement {
+            Statement::VariableAssign(LetStatement {
                 identifier: Token {
                     token_type: TokenType::Identifier("foo".to_owned()),
                 },
                 expression: Expression::Boolean(true),
             }),
-            Statement::Var(VarStatement {
+            Statement::VariableAssign(LetStatement {
                 identifier: Token {
                     token_type: TokenType::Identifier("bar".to_owned()),
                 },

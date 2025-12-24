@@ -4,7 +4,7 @@
 *   recursive and iterative method
 **/
 
-var fib_recurse = fn(n) {
+let fib_recurse = fn(n) {
     if n < 1 {
         return 0
     }
@@ -15,12 +15,12 @@ var fib_recurse = fn(n) {
     fib_recurse(n - 1) + fib_recurse(n - 2)
 }
 
-var fib_iter = fn(n) {
-    var previous = 0
-    var previous_two = 1
-    var next = 0
-    var i = 1
-    var result = while i < (n + 1) {
+let fib_iter = fn(n) {
+    let previous = 0
+    let previous_two = 1
+    let next = 0
+    let i = 1
+    let result = while i < (n + 1) {
         next = previous + previous_two
         previous_two = previous
         previous = next

@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::{
     ast::{
         CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
-        InfixExpression, PrefixExpression, Statement, VarStatement, WhileExpression,
+        InfixExpression, LetStatement, PrefixExpression, Statement, WhileExpression,
     },
     builtin::{call_builtin, get_built_in},
     environment::Environment,
@@ -41,7 +41,7 @@ fn eval_statement(stmt: &Statement, env: Rc<RefCell<Environment>>) -> Object {
         Statement::Break(expr) => Object::Break(Box::new(eval_expression(expr, Rc::clone(&env)))),
         Statement::Program(statements) => eval_statements(statements, env),
         Statement::Block(statements) => eval_block(statements, env),
-        Statement::Var(statement) => eval_var(statement, env),
+        Statement::VariableAssign(statement) => eval_variable_assign(statement, env),
     }
 }
 
@@ -471,7 +471,7 @@ fn eval_lt(infix: &InfixExpression, env: Rc<RefCell<Environment>>) -> Object {
     }
 }
 
-fn eval_var(var: &VarStatement, env: Rc<RefCell<Environment>>) -> Object {
+fn eval_variable_assign(var: &LetStatement, env: Rc<RefCell<Environment>>) -> Object {
     let result = eval_expression(&var.expression, Rc::clone(&env));
     if matches!(result, Object::Error(_)) {
         return result;
@@ -667,8 +667,8 @@ mod tests {
     #[test]
     fn assign() {
         let input = "
-            var foo = 5; foo;
-            var bar = 20; var foobar = bar; foobar;
+            let foo = 5; foo;
+            let bar = 20; let foobar = bar; foobar;
         ";
         let expected = vec![
             Object::Int(5),
@@ -704,11 +704,11 @@ mod tests {
     #[test]
     fn closures() {
         let input = "
-            var adder = fn(x) {
-                var foo = 2;
+            let adder = fn(x) {
+                let foo = 2;
                 fn(y) { x + y }
             };
-            var add_two = adder(2);
+            let add_two = adder(2);
             add_two(2);
         ";
 
@@ -726,9 +726,9 @@ mod tests {
     fn strings() {
         let input = "
             \"Goodbye\"
-            var foo = \"Hello\"
+            let foo = \"Hello\"
             foo
-            var bar = \"World\"
+            let bar = \"World\"
             foo + \" \" + bar
             foo + 2
         ";
@@ -755,7 +755,7 @@ mod tests {
     #[test]
     fn builtin_first() {
         let input = "
-            var foo = [1, 2, 3]
+            let foo = [1, 2, 3]
             first(foo)
         ";
         let expected = vec![
@@ -768,7 +768,7 @@ mod tests {
     #[test]
     fn builtin_last() {
         let input = "
-            var foo = [1, 2, 3, 4, 5]
+            let foo = [1, 2, 3, 4, 5]
             last(foo)
         ";
         let expected = vec![
@@ -787,7 +787,7 @@ mod tests {
     #[test]
     fn builtin_tail() {
         let input = "
-            var foo = [1, 2, 3, 4, 5]
+            let foo = [1, 2, 3, 4, 5]
             tail(foo, 3)
         ";
         let expected = vec![
@@ -806,25 +806,25 @@ mod tests {
     #[test]
     fn while_loop() {
         let input = "
-            var i = 0
+            let i = 0
             while i < 3 {
-                var i = i + 1
+                let i = i + 1
             }
 
-            var i = 0
+            let i = 0
             while i < 10 {
-                var i = i + 1
+                let i = i + 1
                 if i == 6 {
                     break i
                 }
             }
 
-            var i = 0
+            let i = 0
             while i < 10 {
                 if i == 5 {
                     break i
                 }
-                var i = i + 1
+                let i = i + 1
             }
         ";
         let expected = vec![
@@ -841,10 +841,10 @@ mod tests {
     #[test]
     fn arrays() {
         let input = "
-            var foo = [1, 2 * 2]
+            let foo = [1, 2 * 2]
             foo[1]
             len(foo)
-            var bar = foo + [5, 6]
+            let bar = foo + [5, 6]
             bar + 7
         ";
         let expected = vec![
@@ -871,7 +871,7 @@ mod tests {
     #[test]
     fn assign_existing_var() {
         let input = "
-            var foo = 5
+            let foo = 5
             foo = 8
             foo
         ";

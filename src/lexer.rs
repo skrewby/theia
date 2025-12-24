@@ -193,7 +193,7 @@ fn read_string(lexer: &mut Lexer) -> String {
 fn get_identifier_token_type(identifier: &str) -> TokenType {
     match identifier {
         "fn" => TokenType::Function,
-        "var" => TokenType::Variable,
+        "let" => TokenType::Variable,
         "true" => TokenType::True,
         "false" => TokenType::False,
         "if" => TokenType::If,
@@ -314,20 +314,20 @@ mod tests {
 *           **/
 
             // This is a comment that should be ignored
-            var five = 5;
-            var ten = 10;
+            let five = 5;
+            let ten = 10;
 
             /*
             * This is a multiblock comment that should be ignored
             */
-            var add = fn(x, y) {
+            let add = fn(x, y) {
                 x + y - 8;
             };
 
             // This is a comment that should be ignored
-            var result = add(five, ten);
+            let result = add(five, ten);
 
-            var foo = 5 * 20 / 100;
+            let foo = 5 * 20 / 100;
             if result > foo {
                 return foo != 20;
             } else {

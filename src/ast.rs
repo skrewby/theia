@@ -3,7 +3,7 @@ use crate::token::Token;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Program(Vec<Statement>),
-    Var(VarStatement),
+    VariableAssign(LetStatement),
     Return(Expression),
     Break(Expression),
     Expression(Expression),
@@ -28,7 +28,7 @@ pub enum Expression {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct VarStatement {
+pub struct LetStatement {
     pub identifier: Token,
     pub expression: Expression,
 }
