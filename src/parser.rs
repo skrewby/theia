@@ -3,7 +3,6 @@ use crate::{
         CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression,
         InfixExpression, LetStatement, PrefixExpression, Statement, WhileExpression,
     },
-    lexer::Lexer,
     token::{Token, TokenType},
 };
 
@@ -21,28 +20,29 @@ enum Precedence {
 }
 
 pub struct Parser {
-    lexer: Lexer,
+    tokens: Vec<Token>,
+    position: usize,
     current_token: Token,
     peek_token: Token,
     pub errors: Vec<String>,
 }
 
 impl Parser {
-    pub fn new(lexer: Lexer) -> Parser {
-        let mut parser = Parser {
-            lexer,
-            current_token: Token {
-                token_type: TokenType::EOF,
-            },
-            peek_token: Token {
-                token_type: TokenType::EOF,
-            },
-            errors: Vec::new(),
-        };
-        parser.next_token();
-        parser.next_token();
+    pub fn new(tokens: Vec<Token>) -> Parser {
+        let current_token = tokens.get(0).cloned().unwrap_or(Token {
+            token_type: TokenType::EOF,
+        });
+        let peek_token = tokens.get(1).cloned().unwrap_or(Token {
+            token_type: TokenType::EOF,
+        });
 
-        parser
+        Parser {
+            tokens,
+            position: 1,
+            current_token,
+            peek_token,
+            errors: Vec::new(),
+        }
     }
 
     pub fn parse_program(&mut self) -> Statement {
@@ -63,7 +63,10 @@ impl Parser {
 
     fn next_token(&mut self) {
         self.current_token = self.peek_token.clone();
-        self.peek_token = self.lexer.next_token();
+        self.position += 1;
+        self.peek_token = self.tokens.get(self.position).cloned().unwrap_or(Token {
+            token_type: TokenType::EOF,
+        });
     }
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
@@ -464,7 +467,7 @@ fn token_precedence(token: &TokenType) -> Precedence {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::IfExpression;
+    use crate::{ast::IfExpression, lexer::lex_input};
 
     use super::*;
 
@@ -926,8 +929,8 @@ mod tests {
     }
 
     fn setup_test(input: &str, expected_statement_count: usize) -> Vec<Statement> {
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer);
+        let tokens = lex_input(input);
+        let mut parser = Parser::new(tokens);
 
         let program = parser.parse_program();
         check_parsing_errors(&parser);

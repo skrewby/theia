@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::environment::Environment;
 use crate::evaluator::evaluate;
-use crate::lexer::Lexer;
+use crate::lexer::lex_input;
 use crate::object::Object;
 use crate::parser::Parser;
 
@@ -12,8 +12,8 @@ pub fn run_script(filename: &str) {
     let contents =
         fs::read_to_string(filename).expect(&format!("Failed to read file: {}", filename));
 
-    let lexer = Lexer::new(&contents);
-    let mut parser = Parser::new(lexer);
+    let tokens = lex_input(&contents);
+    let mut parser = Parser::new(tokens);
     let program = parser.parse_program();
 
     if parser.has_errors() {

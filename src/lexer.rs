@@ -4,7 +4,7 @@ use crate::token::{Token, TokenType};
 
 /// The lexer is responsible for converting our input into tokens which can then be consumed by our
 /// parser
-pub struct Lexer {
+struct LexerState {
     /// Program input
     input: Vec<char>,
     /// Current position in input (points to current char)
@@ -15,9 +15,9 @@ pub struct Lexer {
     ch: Option<char>,
 }
 
-impl Lexer {
-    pub fn new(input: &str) -> Lexer {
-        let mut lexer = Lexer {
+impl LexerState {
+    fn new(input: &str) -> LexerState {
+        let mut lexer = LexerState {
             input: input.chars().collect(),
             position: 0,
             read_position: 0,
@@ -29,7 +29,7 @@ impl Lexer {
     }
 
     /// Consume the next character/s in the input and return their equivalent token
-    pub fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> Token {
         self.skip_whitespace();
 
         let token_type = if let Some(current_char) = self.ch {
@@ -146,7 +146,28 @@ impl Lexer {
     }
 }
 
-fn read_while<F>(lexer: &mut Lexer, predicate: F) -> String
+impl Iterator for LexerState {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let token = self.next_token();
+        if matches!(token.token_type, TokenType::EOF) {
+            None
+        } else {
+            Some(token)
+        }
+    }
+}
+
+pub fn lex_input(input: &str) -> Vec<Token> {
+    let mut tokens: Vec<Token> = LexerState::new(input).collect();
+    tokens.push(Token {
+        token_type: TokenType::EOF,
+    });
+    tokens
+}
+
+fn read_while<F>(lexer: &mut LexerState, predicate: F) -> String
 where
     F: Fn(char) -> bool,
 {
@@ -158,7 +179,7 @@ where
     lexer.input[pos..lexer.position].iter().collect()
 }
 
-fn read_number(lexer: &mut Lexer) -> String {
+fn read_number(lexer: &mut LexerState) -> String {
     let mut number = read_while(lexer, |ch| is_digit(ch) || ch == '_');
 
     // Hex - 0xABCD or 0XABCD or 0xabcd
@@ -179,7 +200,7 @@ fn read_number(lexer: &mut Lexer) -> String {
     number
 }
 
-fn read_string(lexer: &mut Lexer) -> String {
+fn read_string(lexer: &mut LexerState) -> String {
     let pos = lexer.position;
     while lexer.ch.is_some_and(|ch| ch != '"') {
         lexer.pop_char();
@@ -243,7 +264,7 @@ mod tests {
     #[test]
     fn simple_tokens() {
         let input = "=+-!*/(){}[],;<>===!==";
-        let expected_types = vec![
+        let expected = vec![
             Assign,
             Plus,
             Minus,
@@ -264,19 +285,16 @@ mod tests {
             Assign,
             NotEqual,
             Assign,
+            EOF,
         ];
 
-        let mut lexer = Lexer::new(input);
-        for expected in expected_types {
-            let token = lexer.next_token();
-            assert_eq!(token.token_type, expected);
-        }
+        check_matches(input, &expected);
     }
 
     #[test]
     fn numbers() {
         let input = "5 10 100 1.23456 0xF 0xFFFF 10_000 0xFF_FF 10_000_000";
-        let expected_types = vec![
+        let expected = vec![
             Int(5),
             Int(10),
             Int(100),
@@ -286,24 +304,18 @@ mod tests {
             Int(10000),
             Int(65535),
             Int(10000000),
+            EOF,
         ];
 
-        let mut lexer = Lexer::new(input);
-        for expected in expected_types {
-            let token = lexer.next_token();
-            assert_eq!(token.token_type, expected);
-        }
+        check_matches(input, &expected);
     }
 
     #[test]
     fn strings() {
         let input = "\"Hello World\"";
-        let expected_types = vec![Str("Hello World".to_owned())];
-        let mut lexer = Lexer::new(input);
-        for expected in expected_types {
-            let token = lexer.next_token();
-            assert_eq!(token.token_type, expected);
-        }
+        let expected = vec![Str("Hello World".to_owned()), EOF];
+
+        check_matches(input, &expected);
     }
 
     #[test]
@@ -334,7 +346,7 @@ mod tests {
                 return foo == 10;
             }
         ";
-        let expected_types = vec![
+        let expected = vec![
             Variable,
             Identifier("five".to_string()),
             Assign,
@@ -404,10 +416,16 @@ mod tests {
             EOF,
         ];
 
-        let mut lexer = Lexer::new(input);
-        for expected in expected_types {
-            let token = lexer.next_token();
-            assert_eq!(token.token_type, expected);
+        check_matches(input, &expected);
+    }
+
+    fn check_matches(input: &str, expected: &Vec<TokenType>) {
+        let tokens = lex_input(input);
+        assert_eq!(tokens.len(), expected.len());
+
+        for (i, token) in tokens.iter().enumerate() {
+            let expected_type = &expected[i];
+            assert_eq!(token.token_type, *expected_type);
         }
     }
 }

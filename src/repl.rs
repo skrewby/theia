@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::io::{Write, stdin, stdout};
 use std::rc::Rc;
 
-use crate::{environment::Environment, evaluator::evaluate, lexer::Lexer, parser::Parser};
+use crate::lexer::lex_input;
+use crate::{environment::Environment, evaluator::evaluate, parser::Parser};
 
 pub struct Repl {}
 
@@ -21,8 +22,8 @@ impl Repl {
 
             buffer.clear();
             stdin().read_line(&mut buffer).unwrap();
-            let lexer = Lexer::new(&buffer);
-            let mut parser = Parser::new(lexer);
+            let tokens = lex_input(&buffer);
+            let mut parser = Parser::new(tokens);
 
             let program = parser.parse_program();
             if parser.has_errors() {

@@ -173,6 +173,14 @@ fn apply_function(function: &Object, args: &Vec<Object>) -> Object {
         _ => return Object::Error("not a function".to_string()),
     };
 
+    if func.parameters.len() != args.len() {
+        return Object::Error(format!(
+            "Wrong number of arguments: expected {}, got {}",
+            func.parameters.len(),
+            args.len()
+        ));
+    }
+
     let scoped_env = Rc::new(RefCell::new(Environment::enclosed(Rc::clone(&func.env))));
 
     for (i, param) in func.parameters.iter().enumerate() {
@@ -495,7 +503,7 @@ fn eval_function(function: &FunctionExpression, env: Rc<RefCell<Environment>>) -
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::Lexer, parser::Parser};
+    use crate::{lexer::lex_input, parser::Parser};
 
     use super::*;
 
@@ -889,8 +897,8 @@ mod tests {
     }
 
     fn setup_test(input: &str) -> Vec<Statement> {
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer);
+        let tokens = lex_input(input);
+        let mut parser = Parser::new(tokens);
 
         let program = parser.parse_program();
         check_parsing_errors(&parser);
