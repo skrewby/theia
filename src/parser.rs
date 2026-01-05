@@ -19,7 +19,7 @@ enum Precedence {
     Index,
 }
 
-struct Parser {
+struct ParserState {
     tokens: Vec<Token>,
     position: usize,
     current_token: Token,
@@ -27,8 +27,8 @@ struct Parser {
     errors: Vec<String>,
 }
 
-impl Parser {
-    fn new(tokens: Vec<Token>) -> Parser {
+impl ParserState {
+    fn new(tokens: Vec<Token>) -> ParserState {
         let current_token = tokens.get(0).cloned().unwrap_or(Token {
             token_type: TokenType::EOF,
         });
@@ -36,7 +36,7 @@ impl Parser {
             token_type: TokenType::EOF,
         });
 
-        Parser {
+        ParserState {
             tokens,
             position: 1,
             current_token,
@@ -67,7 +67,7 @@ impl Parser {
 }
 
 pub fn parse_program(tokens: Vec<Token>) -> Result<Statement, Vec<String>> {
-    let mut parser = Parser::new(tokens);
+    let mut parser = ParserState::new(tokens);
     let mut statements = Vec::new();
 
     while parser.current_token.token_type != TokenType::EOF {
@@ -87,7 +87,7 @@ pub fn parse_program(tokens: Vec<Token>) -> Result<Statement, Vec<String>> {
     }
 }
 
-fn parse_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_statement(parser: &mut ParserState) -> Option<Statement> {
     match parser.current_token.token_type {
         TokenType::Variable => parse_let_statement(parser),
         TokenType::Return => parse_return_statement(parser),
@@ -96,7 +96,7 @@ fn parse_statement(parser: &mut Parser) -> Option<Statement> {
     }
 }
 
-fn parse_prefix_expression(parser: &mut Parser) -> Option<Expression> {
+fn parse_prefix_expression(parser: &mut ParserState) -> Option<Expression> {
     match parser.current_token.token_type {
         TokenType::Identifier(_) => parse_identifier(parser),
         TokenType::Int(_) => parse_int(parser),
@@ -113,7 +113,7 @@ fn parse_prefix_expression(parser: &mut Parser) -> Option<Expression> {
     }
 }
 
-fn parse_infix_expression(parser: &mut Parser, left: Expression) -> Option<Expression> {
+fn parse_infix_expression(parser: &mut ParserState, left: Expression) -> Option<Expression> {
     match parser.current_token.token_type {
         TokenType::Plus
         | TokenType::Minus
@@ -130,7 +130,7 @@ fn parse_infix_expression(parser: &mut Parser, left: Expression) -> Option<Expre
     }
 }
 
-fn parse_let_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_let_statement(parser: &mut ParserState) -> Option<Statement> {
     if !matches!(parser.peek_token.token_type, TokenType::Identifier(_)) {
         let msg = format!(
             "Expected identifier but got {:?}",
@@ -158,7 +158,7 @@ fn parse_let_statement(parser: &mut Parser) -> Option<Statement> {
     }))
 }
 
-fn parse_return_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_return_statement(parser: &mut ParserState) -> Option<Statement> {
     parser.next_token();
     let val = parse_expression(parser, Precedence::Lowest)?;
 
@@ -169,7 +169,7 @@ fn parse_return_statement(parser: &mut Parser) -> Option<Statement> {
     Some(Statement::Return(val))
 }
 
-fn parse_break_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_break_statement(parser: &mut ParserState) -> Option<Statement> {
     parser.next_token();
     let val = parse_expression(parser, Precedence::Lowest)?;
 
@@ -180,7 +180,7 @@ fn parse_break_statement(parser: &mut Parser) -> Option<Statement> {
     Some(Statement::Break(val))
 }
 
-fn parse_expression_statement(parser: &mut Parser) -> Option<Statement> {
+fn parse_expression_statement(parser: &mut ParserState) -> Option<Statement> {
     let expression = parse_expression(parser, Precedence::Lowest)?;
 
     if matches!(parser.peek_token.token_type, TokenType::Semicolon) {
@@ -190,7 +190,7 @@ fn parse_expression_statement(parser: &mut Parser) -> Option<Statement> {
     Some(Statement::Expression(expression))
 }
 
-fn parse_expression(parser: &mut Parser, precedence: Precedence) -> Option<Expression> {
+fn parse_expression(parser: &mut ParserState, precedence: Precedence) -> Option<Expression> {
     let mut left_expression = parse_prefix_expression(parser)?;
 
     while !matches!(parser.peek_token.token_type, TokenType::Semicolon)
@@ -203,7 +203,7 @@ fn parse_expression(parser: &mut Parser, precedence: Precedence) -> Option<Expre
     Some(left_expression)
 }
 
-fn parse_identifier(parser: &mut Parser) -> Option<Expression> {
+fn parse_identifier(parser: &mut ParserState) -> Option<Expression> {
     let TokenType::Identifier(name) = &parser.current_token.token_type else {
         return None;
     };
@@ -211,7 +211,7 @@ fn parse_identifier(parser: &mut Parser) -> Option<Expression> {
     Some(Expression::Identifier(name.clone()))
 }
 
-fn parse_int(parser: &mut Parser) -> Option<Expression> {
+fn parse_int(parser: &mut ParserState) -> Option<Expression> {
     let TokenType::Int(val) = parser.current_token.token_type else {
         return None;
     };
@@ -219,7 +219,7 @@ fn parse_int(parser: &mut Parser) -> Option<Expression> {
     Some(Expression::Int(val))
 }
 
-fn parse_float(parser: &mut Parser) -> Option<Expression> {
+fn parse_float(parser: &mut ParserState) -> Option<Expression> {
     let TokenType::Float(val) = parser.current_token.token_type else {
         return None;
     };
@@ -227,7 +227,7 @@ fn parse_float(parser: &mut Parser) -> Option<Expression> {
     Some(Expression::Float(val))
 }
 
-fn parse_string(parser: &mut Parser) -> Option<Expression> {
+fn parse_string(parser: &mut ParserState) -> Option<Expression> {
     let TokenType::Str(val) = &parser.current_token.token_type else {
         return None;
     };
@@ -235,7 +235,7 @@ fn parse_string(parser: &mut Parser) -> Option<Expression> {
     Some(Expression::Str(val.clone()))
 }
 
-fn parse_prefix(parser: &mut Parser) -> Option<Expression> {
+fn parse_prefix(parser: &mut ParserState) -> Option<Expression> {
     let operator = parser.current_token.clone();
     parser.next_token();
     let right = parse_expression(parser, Precedence::Prefix)?;
@@ -246,7 +246,7 @@ fn parse_prefix(parser: &mut Parser) -> Option<Expression> {
     }))
 }
 
-fn parse_boolean(parser: &mut Parser) -> Option<Expression> {
+fn parse_boolean(parser: &mut ParserState) -> Option<Expression> {
     let val = match parser.current_token.token_type {
         TokenType::True => true,
         TokenType::False => false,
@@ -256,7 +256,7 @@ fn parse_boolean(parser: &mut Parser) -> Option<Expression> {
     Some(Expression::Boolean(val))
 }
 
-fn parse_infix(parser: &mut Parser, left: Expression) -> Option<Expression> {
+fn parse_infix(parser: &mut ParserState, left: Expression) -> Option<Expression> {
     let operator = parser.current_token.clone();
     let precedence = token_precedence(&operator.token_type);
     parser.next_token();
@@ -269,7 +269,7 @@ fn parse_infix(parser: &mut Parser, left: Expression) -> Option<Expression> {
     }))
 }
 
-fn parse_group(parser: &mut Parser) -> Option<Expression> {
+fn parse_group(parser: &mut ParserState) -> Option<Expression> {
     parser.next_token();
 
     let expression = parse_expression(parser, Precedence::Lowest)?;
@@ -280,7 +280,7 @@ fn parse_group(parser: &mut Parser) -> Option<Expression> {
     Some(expression)
 }
 
-fn parse_if(parser: &mut Parser) -> Option<Expression> {
+fn parse_if(parser: &mut ParserState) -> Option<Expression> {
     parser.next_token();
     let condition = parse_expression(parser, Precedence::Lowest)?;
 
@@ -301,7 +301,7 @@ fn parse_if(parser: &mut Parser) -> Option<Expression> {
     }))
 }
 
-fn parse_while(parser: &mut Parser) -> Option<Expression> {
+fn parse_while(parser: &mut ParserState) -> Option<Expression> {
     parser.next_token();
     let condition = parse_expression(parser, Precedence::Lowest)?;
 
@@ -314,7 +314,7 @@ fn parse_while(parser: &mut Parser) -> Option<Expression> {
     }))
 }
 
-fn parse_block(parser: &mut Parser) -> Option<Statement> {
+fn parse_block(parser: &mut ParserState) -> Option<Statement> {
     parser.next_token();
     let mut statements = Vec::new();
 
@@ -330,7 +330,7 @@ fn parse_block(parser: &mut Parser) -> Option<Statement> {
     Some(Statement::Block(statements))
 }
 
-fn parse_fn_literal(parser: &mut Parser) -> Option<Expression> {
+fn parse_fn_literal(parser: &mut ParserState) -> Option<Expression> {
     parser.peek_expected(TokenType::LParen)?;
     parser.next_token();
 
@@ -344,7 +344,7 @@ fn parse_fn_literal(parser: &mut Parser) -> Option<Expression> {
     }))
 }
 
-fn parse_fn_parameters(parser: &mut Parser) -> Option<Vec<Expression>> {
+fn parse_fn_parameters(parser: &mut ParserState) -> Option<Vec<Expression>> {
     let mut identifiers = Vec::new();
 
     if parser.peek_token.token_type == TokenType::RParen {
@@ -375,7 +375,7 @@ fn parse_fn_parameters(parser: &mut Parser) -> Option<Vec<Expression>> {
     Some(identifiers)
 }
 
-fn parse_call(parser: &mut Parser, function: Expression) -> Option<Expression> {
+fn parse_call(parser: &mut ParserState, function: Expression) -> Option<Expression> {
     let args = parse_call_args(parser)?;
     Some(Expression::Call(CallExpression {
         function: Box::new(function),
@@ -383,7 +383,7 @@ fn parse_call(parser: &mut Parser, function: Expression) -> Option<Expression> {
     }))
 }
 
-fn parse_call_args(parser: &mut Parser) -> Option<Vec<Expression>> {
+fn parse_call_args(parser: &mut ParserState) -> Option<Vec<Expression>> {
     let mut args = Vec::new();
 
     if parser.peek_token.token_type == TokenType::RParen {
@@ -406,13 +406,13 @@ fn parse_call_args(parser: &mut Parser) -> Option<Vec<Expression>> {
     Some(args)
 }
 
-fn parse_array(parser: &mut Parser) -> Option<Expression> {
+fn parse_array(parser: &mut ParserState) -> Option<Expression> {
     let elements = parse_expression_list(parser, TokenType::RBracket)?;
 
     Some(Expression::Array(elements))
 }
 
-fn parse_expression_list(parser: &mut Parser, end: TokenType) -> Option<Vec<Expression>> {
+fn parse_expression_list(parser: &mut ParserState, end: TokenType) -> Option<Vec<Expression>> {
     let mut list = Vec::new();
 
     if parser.peek_token.token_type == end {
@@ -435,7 +435,7 @@ fn parse_expression_list(parser: &mut Parser, end: TokenType) -> Option<Vec<Expr
     Some(list)
 }
 
-fn parse_index(parser: &mut Parser, left: Expression) -> Option<Expression> {
+fn parse_index(parser: &mut ParserState, left: Expression) -> Option<Expression> {
     parser.next_token();
     let index = parse_expression(parser, Precedence::Lowest)?;
 
@@ -932,7 +932,7 @@ mod tests {
                 for e in errors {
                     println!("{}", e);
                 }
-                panic!("Parser had errors");
+                panic!("Error in parsing");
             }
         };
 
