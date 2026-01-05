@@ -19,16 +19,16 @@ enum Precedence {
     Index,
 }
 
-pub struct Parser {
+struct Parser {
     tokens: Vec<Token>,
     position: usize,
     current_token: Token,
     peek_token: Token,
-    pub errors: Vec<String>,
+    errors: Vec<String>,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Parser {
+    fn new(tokens: Vec<Token>) -> Parser {
         let current_token = tokens.get(0).cloned().unwrap_or(Token {
             token_type: TokenType::EOF,
         });
@@ -45,37 +45,12 @@ impl Parser {
         }
     }
 
-    pub fn parse_program(&mut self) -> Statement {
-        let mut statements = Vec::new();
-
-        while self.current_token.token_type != TokenType::EOF {
-            if let Some(statement) = parse_statement(self) {
-                statements.push(statement);
-            } else {
-                let msg = format!("Unexpected token: {:?}", self.current_token);
-                self.errors.push(msg);
-            }
-            self.next_token();
-        }
-
-        Statement::Program(statements)
-    }
-
     fn next_token(&mut self) {
         self.current_token = self.peek_token.clone();
         self.position += 1;
         self.peek_token = self.tokens.get(self.position).cloned().unwrap_or(Token {
             token_type: TokenType::EOF,
         });
-    }
-    pub fn has_errors(&self) -> bool {
-        !self.errors.is_empty()
-    }
-
-    pub fn print_errors(&self) {
-        for err in &self.errors {
-            println!("{}", err);
-        }
     }
 
     fn peek_expected(&mut self, expected: TokenType) -> Option<()> {
@@ -88,6 +63,27 @@ impl Parser {
         );
         self.errors.push(msg);
         None
+    }
+}
+
+pub fn parse_program(tokens: Vec<Token>) -> Result<Statement, Vec<String>> {
+    let mut parser = Parser::new(tokens);
+    let mut statements = Vec::new();
+
+    while parser.current_token.token_type != TokenType::EOF {
+        if let Some(statement) = parse_statement(&mut parser) {
+            statements.push(statement);
+        } else {
+            let msg = format!("Unexpected token: {:?}", parser.current_token);
+            parser.errors.push(msg);
+        }
+        parser.next_token();
+    }
+
+    if !parser.errors.is_empty() {
+        Err(parser.errors)
+    } else {
+        Ok(Statement::Program(statements))
     }
 }
 
@@ -930,10 +926,15 @@ mod tests {
 
     fn setup_test(input: &str, expected_statement_count: usize) -> Vec<Statement> {
         let tokens = lex_input(input);
-        let mut parser = Parser::new(tokens);
-
-        let program = parser.parse_program();
-        check_parsing_errors(&parser);
+        let program = match parse_program(tokens) {
+            Ok(p) => p,
+            Err(errors) => {
+                for e in errors {
+                    println!("{}", e);
+                }
+                panic!("Parser had errors");
+            }
+        };
 
         let Statement::Program(statements) = program else {
             panic!("parse_program needs to return a Statement::Program");
@@ -949,15 +950,6 @@ mod tests {
                 panic!("Expected to parse only expression statements");
             };
             assert_eq!(*expression, expected_expressions[i]);
-        }
-    }
-
-    fn check_parsing_errors(parser: &Parser) {
-        if !parser.errors.is_empty() {
-            for e in &parser.errors {
-                println!("{}", e);
-            }
-            panic!("Parser had errors");
         }
     }
 }

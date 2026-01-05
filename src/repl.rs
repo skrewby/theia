@@ -3,7 +3,8 @@ use std::io::{Write, stdin, stdout};
 use std::rc::Rc;
 
 use crate::lexer::lex_input;
-use crate::{environment::Environment, evaluator::evaluate, parser::Parser};
+use crate::parser::parse_program;
+use crate::{environment::Environment, evaluator::evaluate};
 
 pub struct Repl {}
 
@@ -22,14 +23,17 @@ impl Repl {
 
             buffer.clear();
             stdin().read_line(&mut buffer).unwrap();
-            let tokens = lex_input(&buffer);
-            let mut parser = Parser::new(tokens);
 
-            let program = parser.parse_program();
-            if parser.has_errors() {
-                parser.print_errors();
-                continue;
-            }
+            let tokens = lex_input(&buffer);
+            let program = match parse_program(tokens) {
+                Ok(p) => p,
+                Err(errors) => {
+                    for e in errors {
+                        println!("{}", e);
+                    }
+                    continue;
+                }
+            };
 
             let obj = evaluate(&program, Rc::clone(&environment));
             println!("{}", obj.inspect());

@@ -503,7 +503,7 @@ fn eval_function(function: &FunctionExpression, env: Rc<RefCell<Environment>>) -
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex_input, parser::Parser};
+    use crate::{lexer::lex_input, parser::parse_program};
 
     use super::*;
 
@@ -898,24 +898,20 @@ mod tests {
 
     fn setup_test(input: &str) -> Vec<Statement> {
         let tokens = lex_input(input);
-        let mut parser = Parser::new(tokens);
-
-        let program = parser.parse_program();
-        check_parsing_errors(&parser);
+        let program = match parse_program(tokens) {
+            Ok(p) => p,
+            Err(errors) => {
+                for e in errors {
+                    println!("{}", e);
+                }
+                panic!("Parser had errors");
+            }
+        };
 
         let Statement::Program(statements) = program else {
             panic!("parse_program needs to return a Statement::Program");
         };
 
         statements
-    }
-
-    fn check_parsing_errors(parser: &Parser) {
-        if !parser.errors.is_empty() {
-            for e in &parser.errors {
-                println!("{}", e);
-            }
-            panic!("Parser had errors");
-        }
     }
 }
