@@ -60,7 +60,7 @@ impl VM {
             self.decode_and_execute(&opcode)?;
         }
 
-        Ok(self.stack_top())
+        Ok(self.stack_last_popped())
     }
 
     fn fetch(&mut self) -> Result<Opcode, String> {
@@ -74,6 +74,9 @@ impl VM {
         match opcode {
             Opcode::ConstantPush => op_constant_push(self)?,
             Opcode::Add => op_add(self)?,
+            Opcode::Pop => {
+                self.pop()?;
+            }
         };
 
         Ok(())
@@ -103,12 +106,12 @@ impl VM {
         Ok(self.stack[self.reg.sp].clone())
     }
 
-    fn stack_top(&self) -> Object {
-        if self.reg.sp == 0 {
+    fn stack_last_popped(&self) -> Object {
+        if self.stack.is_empty() || self.reg.sp >= self.stack.len() {
             return Object::Null;
         }
 
-        self.stack[self.reg.sp - 1].clone()
+        self.stack[self.reg.sp].clone()
     }
 
     fn get_operands(&mut self, num: usize) -> &[u8] {
@@ -137,8 +140,8 @@ fn op_constant_push(vm: &mut VM) -> Result<(), String> {
 }
 
 fn op_add(vm: &mut VM) -> Result<(), String> {
-    let left = vm.pop()?;
     let right = vm.pop()?;
+    let left = vm.pop()?;
 
     let result = eval_addition(&left, &right);
     vm.push(result)?;
@@ -208,14 +211,16 @@ fn eval_concat_array(left: &Object, right: &Object) -> Object {
 
 #[cfg(test)]
 mod tests {
+    use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
+
     use super::*;
 
     #[test]
     fn constant_push() {
-        let instructions = vec![Opcode::ConstantPush as u8, 0x00, 0x00];
+        let instructions = vec![Opcode::ConstantPush as u8, 0x00, 0x00, Opcode::Pop as u8];
         let constants = vec![Object::Int(42)];
 
-        setup_test(instructions, constants, Object::Int(42));
+        setup_test_opcodes(instructions, constants, Object::Int(42));
     }
 
     #[test]
@@ -227,29 +232,56 @@ mod tests {
             Opcode::ConstantPush as u8,
             0x00,
             0x01,
+            Opcode::Pop as u8,
         ];
         let constants = vec![Object::Int(10), Object::Int(20)];
 
-        setup_test(instructions, constants, Object::Int(20));
+        setup_test_opcodes(instructions, constants, Object::Int(20));
     }
 
     #[test]
     fn arithmetic_int_addition() {
-        let instructions = vec![
-            Opcode::ConstantPush as u8,
-            0x00,
-            0x00,
-            Opcode::ConstantPush as u8,
-            0x00,
-            0x01,
-            Opcode::Add as u8,
-        ];
-        let constants = vec![Object::Int(10), Object::Int(20)];
+        let input = "
+            10 + 20
+        ";
 
-        setup_test(instructions, constants, Object::Int(30));
+        setup_test(input, Object::Int(30));
     }
 
-    fn setup_test(instructions: Vec<u8>, constants: Vec<Object>, expected: Object) {
+    fn setup_test(input: &str, expected: Object) {
+        let tokens = lex_input(input);
+        let ast = match parse_program(tokens) {
+            Ok(p) => p,
+            Err(errors) => {
+                for e in errors {
+                    println!("{}", e);
+                }
+                panic!("Error when parsing program")
+            }
+        };
+
+        let bytecode = match compile(&ast) {
+            Ok(p) => p,
+            Err(errors) => {
+                for e in errors {
+                    println!("{}", e);
+                }
+                panic!("error when compiling program")
+            }
+        };
+
+        let mut vm = VM::new(bytecode);
+        let obj = match vm.run() {
+            Ok(o) => o,
+            Err(e) => {
+                panic!("Internal VM Error: {}", e);
+            }
+        };
+
+        assert_eq!(obj, expected);
+    }
+
+    fn setup_test_opcodes(instructions: Vec<u8>, constants: Vec<Object>, expected: Object) {
         let mut vm = VM::new(Bytecode {
             instructions,
             constants,

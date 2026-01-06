@@ -67,7 +67,10 @@ fn compile_statement(state: &mut CompilerState, statement: &Statement) {
                 compile_statement(state, stmt);
             }
         }
-        Statement::Expression(expression) => compile_expression(state, expression),
+        Statement::Expression(expression) => {
+            compile_expression(state, expression);
+            state.emit(Opcode::Pop, &[]);
+        }
         _ => {
             state.add_error(format!("Unsupported statement: {:?}", statement));
         }
@@ -113,15 +116,14 @@ mod tests {
             10 + 20
         ";
         let expected = vec![
-            // Push constants[0]
             Opcode::ConstantPush as u8,
             0x00,
             0x00,
-            // Push constants[1]
             Opcode::ConstantPush as u8,
             0x00,
             0x01,
             Opcode::Add as u8,
+            Opcode::Pop as u8,
         ];
 
         check_bytecode_match(input, &expected);
