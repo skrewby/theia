@@ -1,10 +1,9 @@
-use std::cell::RefCell;
 use std::io::{Write, stdin, stdout};
-use std::rc::Rc;
 
+use crate::compiler::compile;
 use crate::lexer::lex_input;
 use crate::parser::parse_program;
-use crate::{environment::Environment, evaluator::evaluate};
+use crate::vm::VM;
 
 pub struct Repl {}
 
@@ -15,7 +14,6 @@ impl Repl {
 
     pub fn start(&self) {
         let mut buffer = String::new();
-        let environment = Rc::new(RefCell::new(Environment::new()));
 
         loop {
             print!(">> ");
@@ -35,7 +33,25 @@ impl Repl {
                 }
             };
 
-            let obj = evaluate(&program, Rc::clone(&environment));
+            let bytecode = match compile(&program) {
+                Ok(p) => p,
+                Err(errors) => {
+                    for e in errors {
+                        println!("{}", e);
+                    }
+                    continue;
+                }
+            };
+
+            let mut vm = VM::new(bytecode);
+            let obj = match vm.run() {
+                Ok(o) => o,
+                Err(e) => {
+                    println!("{}", e);
+                    continue;
+                }
+            };
+
             println!("{}", obj.inspect());
         }
     }

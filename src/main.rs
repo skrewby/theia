@@ -4,14 +4,17 @@ use crate::{repl::Repl, runner::run_script};
 
 mod ast;
 mod builtin;
+mod compiler;
 mod environment;
 mod evaluator;
 mod lexer;
 mod object;
+mod opcode;
 mod parser;
 mod repl;
 mod runner;
 mod token;
+mod vm;
 
 fn repl_mode() {
     let interpreter = Repl::new();
