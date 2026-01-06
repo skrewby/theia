@@ -214,11 +214,10 @@ fn eval_statements(statements: &Vec<Statement>, env: Rc<RefCell<Environment>>) -
     let mut result = Object::Null;
     for statement in statements {
         result = eval_statement(statement, Rc::clone(&env));
-        if let Object::Return(val) = result {
-            return *val;
-        }
-        if matches!(result, Object::Return(_)) {
-            return result;
+        match result {
+            Object::Return(val) => return *val,
+            Object::Error(_) => return result,
+            _ => {}
         }
     }
     result
