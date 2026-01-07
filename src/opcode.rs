@@ -14,6 +14,10 @@ pub enum Opcode {
     // ---------- Stack ---------- //
     /// Pops the top value of the stack
     Pop = 0x30,
+    /// Pushes the boolean true to the stack
+    PushTrue = 0x31,
+    /// Pushes the boolean false to the stack
+    PushFalse = 0x32,
 
     // ---------- Constants ---------- //
     /// Push constant at index 0xaabb in the constant array to the stack
@@ -28,7 +32,11 @@ impl Opcode {
             0x21 => Ok(Opcode::Sub),
             0x22 => Ok(Opcode::Mul),
             0x23 => Ok(Opcode::Div),
+
             0x30 => Ok(Opcode::Pop),
+            0x31 => Ok(Opcode::PushTrue),
+            0x32 => Ok(Opcode::PushFalse),
+
             0x50 => Ok(Opcode::ConstantPush),
             _ => Err(format!("Unknown opcode: 0x{:02X}", byte)),
         }

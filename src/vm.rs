@@ -82,6 +82,8 @@ impl VM {
             Opcode::Pop => {
                 self.pop()?;
             }
+            Opcode::PushTrue => self.push(Object::Boolean(true))?,
+            Opcode::PushFalse => self.push(Object::Boolean(false))?,
         };
 
         Ok(())
@@ -359,6 +361,17 @@ mod tests {
             Object::Int(120),
             Object::Int(25),
         ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn booleans() {
+        let input = "
+            true
+            false
+        ";
+        let expected = vec![Object::Boolean(true), Object::Boolean(false)];
 
         run_test(input, expected);
     }

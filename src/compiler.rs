@@ -81,6 +81,7 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
     match expression {
         Expression::Infix(infix) => compile_infix_expression(state, infix),
         Expression::Int(val) => create_integer(state, *val),
+        Expression::Boolean(val) => push_boolean(state, *val),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -105,6 +106,13 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
 fn create_integer(state: &mut CompilerState, val: i64) {
     let const_idx = state.add_constant(Object::Int(val));
     state.emit(Opcode::ConstantPush, &[&const_idx.to_be_bytes()]);
+}
+
+fn push_boolean(state: &mut CompilerState, val: bool) {
+    match val {
+        true => state.emit(Opcode::PushTrue, &[]),
+        false => state.emit(Opcode::PushFalse, &[]),
+    }
 }
 
 #[cfg(test)]
