@@ -97,6 +97,10 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
         TokenType::Minus => state.emit(Opcode::Sub, &[]),
         TokenType::Asterisk => state.emit(Opcode::Mul, &[]),
         TokenType::Slash => state.emit(Opcode::Div, &[]),
+        TokenType::Equal => state.emit(Opcode::Equal, &[]),
+        TokenType::NotEqual => state.emit(Opcode::NotEqual, &[]),
+        TokenType::GreaterThan => state.emit(Opcode::GreaterThan, &[]),
+        TokenType::LessThan => state.emit(Opcode::LessThan, &[]),
         _ => {
             state.add_error(format!("Unsupported infix operator: {:?}", infix.operator));
         }
@@ -105,7 +109,7 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
 
 fn create_integer(state: &mut CompilerState, val: i64) {
     let const_idx = state.add_constant(Object::Int(val));
-    state.emit(Opcode::ConstantPush, &[&const_idx.to_be_bytes()]);
+    state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
 }
 
 fn push_boolean(state: &mut CompilerState, val: bool) {
@@ -127,10 +131,10 @@ mod tests {
             10 + 20
         ";
         let expected = vec![
-            Opcode::ConstantPush as u8,
+            Opcode::PushConstant as u8,
             0x00,
             0x00,
-            Opcode::ConstantPush as u8,
+            Opcode::PushConstant as u8,
             0x00,
             0x01,
             Opcode::Add as u8,

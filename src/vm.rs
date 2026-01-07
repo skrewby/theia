@@ -74,7 +74,7 @@ impl VM {
 
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
-            Opcode::ConstantPush => op_constant_push(self)?,
+            Opcode::PushConstant => op_constant_push(self)?,
             Opcode::Add => op_add(self)?,
             Opcode::Sub => op_sub(self)?,
             Opcode::Mul => op_mul(self)?,
@@ -84,6 +84,10 @@ impl VM {
             }
             Opcode::PushTrue => self.push(Object::Boolean(true))?,
             Opcode::PushFalse => self.push(Object::Boolean(false))?,
+            Opcode::Equal => op_comparison(self, opcode)?,
+            Opcode::NotEqual => op_comparison(self, opcode)?,
+            Opcode::GreaterThan => op_comparison(self, opcode)?,
+            Opcode::LessThan => op_comparison(self, opcode)?,
         };
 
         Ok(())
@@ -282,6 +286,71 @@ fn op_div(vm: &mut VM) -> Result<(), String> {
     Ok(())
 }
 
+fn op_comparison(vm: &mut VM, opcode: &Opcode) -> Result<(), String> {
+    let right = vm.pop()?;
+    let left = vm.pop()?;
+
+    let obj = match opcode {
+        Opcode::Equal => eval_equality(&left, &right),
+        Opcode::NotEqual => eval_inequality(&left, &right),
+        Opcode::GreaterThan => eval_gt(&left, &right),
+        Opcode::LessThan => eval_lt(&left, &right),
+        _ => unreachable!(),
+    };
+
+    vm.push(obj)?;
+
+    Ok(())
+}
+
+fn eval_equality(left: &Object, right: &Object) -> Object {
+    match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Boolean(*l == *r),
+        (Object::Float(l), Object::Float(r)) => Object::Boolean(*l == *r),
+        (Object::Int(l), Object::Float(r)) => Object::Boolean(*l as f64 == *r),
+        (Object::Float(l), Object::Int(r)) => Object::Boolean(*l == *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} == {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    }
+}
+
+fn eval_inequality(left: &Object, right: &Object) -> Object {
+    match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Boolean(*l != *r),
+        (Object::Float(l), Object::Float(r)) => Object::Boolean(*l != *r),
+        (Object::Int(l), Object::Float(r)) => Object::Boolean(*l as f64 != *r),
+        (Object::Float(l), Object::Int(r)) => Object::Boolean(*l != *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} != {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    }
+}
+
+fn eval_gt(left: &Object, right: &Object) -> Object {
+    match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Boolean(*l > *r),
+        (Object::Float(l), Object::Float(r)) => Object::Boolean(*l > *r),
+        (Object::Int(l), Object::Float(r)) => Object::Boolean(*l as f64 > *r),
+        (Object::Float(l), Object::Int(r)) => Object::Boolean(*l > *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} > {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    }
+}
+
+fn eval_lt(left: &Object, right: &Object) -> Object {
+    match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Boolean(*l < *r),
+        (Object::Float(l), Object::Float(r)) => Object::Boolean(*l < *r),
+        (Object::Int(l), Object::Float(r)) => Object::Boolean((*l as f64) < *r),
+        (Object::Float(l), Object::Int(r)) => Object::Boolean(*l < *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} < {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
@@ -325,7 +394,7 @@ mod tests {
 
     #[test]
     fn constant_push() {
-        let instructions = vec![Opcode::ConstantPush as u8, 0x00, 0x00, Opcode::Pop as u8];
+        let instructions = vec![Opcode::PushConstant as u8, 0x00, 0x00, Opcode::Pop as u8];
         let constants = vec![Object::Int(42)];
 
         run_test_opcode_input(instructions, constants, Object::Int(42));
@@ -334,10 +403,10 @@ mod tests {
     #[test]
     fn constant_push_multiple() {
         let instructions = vec![
-            Opcode::ConstantPush as u8,
+            Opcode::PushConstant as u8,
             0x00,
             0x00,
-            Opcode::ConstantPush as u8,
+            Opcode::PushConstant as u8,
             0x00,
             0x01,
             Opcode::Pop as u8,
@@ -372,6 +441,32 @@ mod tests {
             false
         ";
         let expected = vec![Object::Boolean(true), Object::Boolean(false)];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn comparisons() {
+        let input = "
+            2 == 2
+            10 == 5
+            3 != 2
+            10 != 10
+            5 > 2
+            2 > 5
+            2 < 5
+            5 < 2
+        ";
+        let expected = vec![
+            Object::Boolean(true),
+            Object::Boolean(false),
+            Object::Boolean(true),
+            Object::Boolean(false),
+            Object::Boolean(true),
+            Object::Boolean(false),
+            Object::Boolean(true),
+            Object::Boolean(false),
+        ];
 
         run_test(input, expected);
     }
