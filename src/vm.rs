@@ -29,6 +29,7 @@ pub struct VM {
     stack: Vec<Object>,
 
     reg: Registers,
+    last_popped: Option<Object>,
 }
 
 pub struct Registers {
@@ -51,6 +52,7 @@ impl VM {
             instructions: bytecode.instructions,
             stack: Vec::with_capacity(STACK_SIZE),
             reg: Registers::new(),
+            last_popped: None,
         }
     }
 
@@ -74,6 +76,9 @@ impl VM {
         match opcode {
             Opcode::ConstantPush => op_constant_push(self)?,
             Opcode::Add => op_add(self)?,
+            Opcode::Sub => op_sub(self)?,
+            Opcode::Mul => op_mul(self)?,
+            Opcode::Div => op_div(self)?,
             Opcode::Pop => {
                 self.pop()?;
             }
@@ -103,15 +108,13 @@ impl VM {
         }
 
         self.reg.sp -= 1;
-        Ok(self.stack[self.reg.sp].clone())
+        let value = self.stack[self.reg.sp].clone();
+        self.last_popped = Some(value.clone());
+        Ok(value)
     }
 
     fn stack_last_popped(&self) -> Object {
-        if self.stack.is_empty() || self.reg.sp >= self.stack.len() {
-            return Object::Null;
-        }
-
-        self.stack[self.reg.sp].clone()
+        self.last_popped.clone().unwrap_or(Object::Null)
     }
 
     fn get_operands(&mut self, num: usize) -> &[u8] {
@@ -209,18 +212,121 @@ fn eval_concat_array(left: &Object, right: &Object) -> Object {
     }
 }
 
+fn op_sub(vm: &mut VM) -> Result<(), String> {
+    let right = vm.pop()?;
+    let left = vm.pop()?;
+
+    let result = match (&left, &right) {
+        (Object::Int(_) | Object::Float(_), Object::Int(_) | Object::Float(_)) => {
+            eval_sum_numbers(&left, &right, false)
+        }
+        _ => Object::Error(format!(
+            "Type mismatch: {} - {}",
+            left.inspect(),
+            right.inspect()
+        )),
+    };
+
+    vm.push(result)?;
+    Ok(())
+}
+
+fn op_mul(vm: &mut VM) -> Result<(), String> {
+    let right = vm.pop()?;
+    let left = vm.pop()?;
+
+    let result = match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Int(*l * *r),
+        (Object::Float(l), Object::Float(r)) => Object::Float(*l * *r),
+        (Object::Int(l), Object::Float(r)) => Object::Float(*l as f64 * *r),
+        (Object::Float(l), Object::Int(r)) => Object::Float(*l * *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} * {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    };
+
+    vm.push(result)?;
+    Ok(())
+}
+
+fn op_div(vm: &mut VM) -> Result<(), String> {
+    let right = vm.pop()?;
+    let left = vm.pop()?;
+
+    if right.is_zero() {
+        let result = Object::Error(
+            format!(
+                "Unable to divide by zero: {} / {}",
+                left.inspect(),
+                right.inspect()
+            )
+            .to_owned(),
+        );
+        vm.push(result)?;
+        return Ok(());
+    };
+
+    let result = match (&left, &right) {
+        (Object::Int(l), Object::Int(r)) => Object::Int(*l / *r),
+        (Object::Float(l), Object::Float(r)) => Object::Float(*l / *r),
+        (Object::Int(l), Object::Float(r)) => Object::Float(*l as f64 / *r),
+        (Object::Float(l), Object::Int(r)) => Object::Float(*l / *r as f64),
+        _ => Object::Error(
+            format!("Type mismatch: {} / {}", left.inspect(), right.inspect()).to_owned(),
+        ),
+    };
+    vm.push(result)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
 
     use super::*;
 
+    impl VM {
+        pub fn iter(self) -> VMIterator {
+            VMIterator { vm: self }
+        }
+
+        fn step(&mut self) -> Result<Object, String> {
+            while self.reg.ip < self.instructions.len() {
+                let opcode = self.fetch()?;
+                self.decode_and_execute(&opcode)?;
+
+                if matches!(opcode, Opcode::Pop) {
+                    return Ok(self.stack_last_popped());
+                }
+            }
+
+            Err("No more instructions to execute".to_string())
+        }
+    }
+
+    pub struct VMIterator {
+        vm: VM,
+    }
+
+    impl Iterator for VMIterator {
+        type Item = Result<Object, String>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.vm.reg.ip >= self.vm.instructions.len() {
+                return None;
+            }
+
+            Some(self.vm.step())
+        }
+    }
+
     #[test]
     fn constant_push() {
         let instructions = vec![Opcode::ConstantPush as u8, 0x00, 0x00, Opcode::Pop as u8];
         let constants = vec![Object::Int(42)];
 
-        setup_test_opcodes(instructions, constants, Object::Int(42));
+        run_test_opcode_input(instructions, constants, Object::Int(42));
     }
 
     #[test]
@@ -236,19 +342,28 @@ mod tests {
         ];
         let constants = vec![Object::Int(10), Object::Int(20)];
 
-        setup_test_opcodes(instructions, constants, Object::Int(20));
+        run_test_opcode_input(instructions, constants, Object::Int(20));
     }
 
     #[test]
-    fn arithmetic_int_addition() {
+    fn arithmetic() {
         let input = "
             10 + 20
+            50 - 30
+            30 * 4
+            50 / 2
         ";
+        let expected = vec![
+            Object::Int(30),
+            Object::Int(20),
+            Object::Int(120),
+            Object::Int(25),
+        ];
 
-        setup_test(input, Object::Int(30));
+        run_test(input, expected);
     }
 
-    fn setup_test(input: &str, expected: Object) {
+    fn run_test(input: &str, expected: Vec<Object>) {
         let tokens = lex_input(input);
         let ast = match parse_program(tokens) {
             Ok(p) => p,
@@ -270,18 +385,20 @@ mod tests {
             }
         };
 
-        let mut vm = VM::new(bytecode);
-        let obj = match vm.run() {
-            Ok(o) => o,
-            Err(e) => {
-                panic!("Internal VM Error: {}", e);
-            }
-        };
+        let vm = VM::new(bytecode);
+        for (i, res) in vm.iter().enumerate() {
+            let obj = match res {
+                Ok(o) => o,
+                Err(e) => {
+                    panic!("Internal VM Error: {}", e);
+                }
+            };
 
-        assert_eq!(obj, expected);
+            assert_eq!(obj, expected[i]);
+        }
     }
 
-    fn setup_test_opcodes(instructions: Vec<u8>, constants: Vec<Object>, expected: Object) {
+    fn run_test_opcode_input(instructions: Vec<u8>, constants: Vec<Object>, expected: Object) {
         let mut vm = VM::new(Bytecode {
             instructions,
             constants,

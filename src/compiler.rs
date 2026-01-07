@@ -93,6 +93,9 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
 
     match infix.operator.token_type {
         TokenType::Plus => state.emit(Opcode::Add, &[]),
+        TokenType::Minus => state.emit(Opcode::Sub, &[]),
+        TokenType::Asterisk => state.emit(Opcode::Mul, &[]),
+        TokenType::Slash => state.emit(Opcode::Div, &[]),
         _ => {
             state.add_error(format!("Unsupported infix operator: {:?}", infix.operator));
         }
