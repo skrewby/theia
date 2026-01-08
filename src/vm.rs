@@ -3,6 +3,7 @@ use crate::{compiler::Bytecode, object::Object, opcode::Opcode};
 const STACK_SIZE: usize = 2048;
 
 pub trait ByteArrayExt {
+    #[allow(dead_code)]
     fn to_u8(&self) -> Result<u8, String>;
     fn to_u16(&self) -> Result<u16, String>;
 }
@@ -74,11 +75,16 @@ impl VM {
 
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
+            // ---------- Operators ---------- //
             Opcode::PushConstant => op_constant_push(self)?,
             Opcode::Add => op_add(self)?,
             Opcode::Sub => op_sub(self)?,
             Opcode::Mul => op_mul(self)?,
             Opcode::Div => op_div(self)?,
+            Opcode::Bang => op_bang(self)?,
+            Opcode::Negate => op_negate(self)?,
+
+            // ---------- Stack ---------- //
             Opcode::Pop => {
                 self.pop()?;
             }
@@ -351,6 +357,40 @@ fn eval_lt(left: &Object, right: &Object) -> Object {
     }
 }
 
+fn op_bang(vm: &mut VM) -> Result<(), String> {
+    let right = vm.pop()?;
+
+    let result = eval_prefix_bang(&right);
+
+    vm.push(result)?;
+    Ok(())
+}
+
+fn eval_prefix_bang(right: &Object) -> Object {
+    if right.is_null() {
+        return Object::Null;
+    }
+
+    Object::Boolean(!right.bool_value())
+}
+
+fn op_negate(vm: &mut VM) -> Result<(), String> {
+    let right = vm.pop()?;
+
+    let result = eval_prefix_negate(&right);
+
+    vm.push(result)?;
+    Ok(())
+}
+
+fn eval_prefix_negate(right: &Object) -> Object {
+    match right {
+        Object::Int(val) => Object::Int(-val),
+        Object::Float(val) => Object::Float(-val),
+        _ => Object::Null,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
@@ -429,6 +469,32 @@ mod tests {
             Object::Int(20),
             Object::Int(120),
             Object::Int(25),
+        ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn prefix() {
+        let input = "
+            !true;
+            !false;
+            !(4 == 4);
+            !(3 < 1);
+            -1;
+            -3.14;
+            -(2 + 3);
+            -(4 - 10);
+        ";
+        let expected = vec![
+            Object::Boolean(false),
+            Object::Boolean(true),
+            Object::Boolean(false),
+            Object::Boolean(true),
+            Object::Int(-1),
+            Object::Float(-3.14),
+            Object::Int(-5),
+            Object::Int(6),
         ];
 
         run_test(input, expected);

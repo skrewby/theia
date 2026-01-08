@@ -1,4 +1,4 @@
-use crate::ast::{Expression, InfixExpression};
+use crate::ast::{Expression, InfixExpression, PrefixExpression};
 use crate::opcode::Opcode;
 use crate::token::TokenType;
 use crate::{ast::Statement, object::Object};
@@ -79,11 +79,28 @@ fn compile_statement(state: &mut CompilerState, statement: &Statement) {
 
 fn compile_expression(state: &mut CompilerState, expression: &Expression) {
     match expression {
+        Expression::Prefix(prefix) => compile_prefix_expression(state, prefix),
         Expression::Infix(infix) => compile_infix_expression(state, infix),
         Expression::Int(val) => create_integer(state, *val),
+        Expression::Float(val) => create_float(state, *val),
         Expression::Boolean(val) => push_boolean(state, *val),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
+        }
+    }
+}
+
+fn compile_prefix_expression(state: &mut CompilerState, prefix: &PrefixExpression) {
+    compile_expression(state, &prefix.right);
+
+    match prefix.operator.token_type {
+        TokenType::Bang => state.emit(Opcode::Bang, &[]),
+        TokenType::Minus => state.emit(Opcode::Negate, &[]),
+        _ => {
+            state.add_error(format!(
+                "Unsupported prefix operator: {:?}",
+                prefix.operator
+            ));
         }
     }
 }
@@ -109,6 +126,11 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
 
 fn create_integer(state: &mut CompilerState, val: i64) {
     let const_idx = state.add_constant(Object::Int(val));
+    state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
+}
+
+fn create_float(state: &mut CompilerState, val: f64) {
+    let const_idx = state.add_constant(Object::Float(val));
     state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
 }
 

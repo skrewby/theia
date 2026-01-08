@@ -18,6 +18,10 @@ pub enum Opcode {
     GreaterThan = 0x26,
     /// Pop the top two values of the stack and push less than result
     LessThan = 0x27,
+    /// Pop the top of the stack and push the !value
+    Bang = 0x28,
+    /// Pop the top of the stack and push the negate result
+    Negate = 0x29,
 
     // ---------- Stack ---------- //
     /// Pops the top value of the stack
@@ -42,6 +46,8 @@ impl Opcode {
             0x25 => Ok(Opcode::NotEqual),
             0x26 => Ok(Opcode::GreaterThan),
             0x27 => Ok(Opcode::LessThan),
+            0x28 => Ok(Opcode::Bang),
+            0x29 => Ok(Opcode::Negate),
 
             0x40 => Ok(Opcode::Pop),
             0x41 => Ok(Opcode::PushTrue),
@@ -49,6 +55,26 @@ impl Opcode {
             0x43 => Ok(Opcode::PushConstant),
 
             _ => Err(format!("Unknown opcode: 0x{:02X}", byte)),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn num_operands(&self) -> usize {
+        match self {
+            Opcode::Add => 0,
+            Opcode::Sub => 0,
+            Opcode::Mul => 0,
+            Opcode::Div => 0,
+            Opcode::Equal => 0,
+            Opcode::NotEqual => 0,
+            Opcode::GreaterThan => 0,
+            Opcode::LessThan => 0,
+            Opcode::Bang => 0,
+            Opcode::Negate => 0,
+            Opcode::Pop => 0,
+            Opcode::PushTrue => 0,
+            Opcode::PushFalse => 0,
+            Opcode::PushConstant => 2,
         }
     }
 }
