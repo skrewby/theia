@@ -58,7 +58,6 @@ impl Opcode {
         }
     }
 
-    #[allow(dead_code)]
     pub fn num_operands(&self) -> usize {
         match self {
             Opcode::Add => 0,
