@@ -57,4 +57,11 @@ impl Opcode {
             _ => Err(format!("Unknown opcode: 0x{:02X}", byte)),
         }
     }
+
+    pub fn num_operands(&self) -> usize {
+        match self {
+            Opcode::PushConstant => 2,
+            _ => 0,
+        }
+    }
 }

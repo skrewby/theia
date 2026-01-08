@@ -145,6 +145,35 @@ impl VM {
             )),
         }
     }
+
+    #[allow(dead_code)]
+    fn formatted_instructions(&self) -> Result<String, String> {
+        let mut result = String::with_capacity(self.instructions.len());
+        result.push_str("Instructions");
+
+        let mut operands_left = 0;
+        for (bytenum, byte) in self.instructions.iter().enumerate() {
+            if operands_left > 0 {
+                result.push_str(&format!(" {:#02x}", byte));
+                operands_left -= 1;
+                continue;
+            }
+
+            result.push_str("\n");
+            let opcode = Opcode::from_byte(*byte)?;
+            operands_left = opcode.num_operands();
+            result.push_str(&format!("{:#04x}: {:?}", bytenum, opcode));
+        }
+
+        result.push_str("\n");
+        result.push_str("\n");
+        result.push_str("Constants\n");
+        for (i, constant) in self.constants.iter().enumerate() {
+            result.push_str(&format!("{:#04x}: {:?}\n", i, constant));
+        }
+
+        Ok(result)
+    }
 }
 
 fn op_constant_push(vm: &mut VM) -> Result<(), String> {
@@ -560,6 +589,8 @@ mod tests {
         };
 
         let vm = VM::new(bytecode);
+        let pretty_instructions = vm.formatted_instructions().unwrap();
+        println!("{}", pretty_instructions);
         for (i, res) in vm.iter().enumerate() {
             let obj = match res {
                 Ok(o) => o,
