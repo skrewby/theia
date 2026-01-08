@@ -148,9 +148,7 @@ impl VM {
 }
 
 fn op_constant_push(vm: &mut VM) -> Result<(), String> {
-    let idx = vm
-        .get_operands(Opcode::PushConstant.num_operands())
-        .to_u16()?;
+    let idx = vm.get_operands(2).to_u16()?;
     let constant = vm.get_constant(idx)?;
     vm.push(constant)?;
     Ok(())
