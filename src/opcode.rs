@@ -1,6 +1,9 @@
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Opcode {
+    /// Do nothing
+    Nop = 0x00,
+
     // ---------- Operators ---------- //
     /// Pop the top two values of the stack and push addition result
     Add = 0x20,
@@ -23,44 +26,60 @@ pub enum Opcode {
     /// Pop the top of the stack and push the negate result
     Negate = 0x29,
 
-    // ---------- Stack ---------- //
+    // ------------ Stack ------------ //
     /// Pops the top value of the stack
     Pop = 0x40,
     /// Pushes the boolean true to the stack
     PushTrue = 0x41,
     /// Pushes the boolean false to the stack
     PushFalse = 0x42,
+    /// Pushes null to the stack
+    PushNull = 0x43,
     /// Push constant at index 0xaabb in the constant array to the stack
     /// 0x60 aa bb
-    PushConstant = 0x43,
+    PushConstant = 0x44,
+
+    // ------------ Jumps ------------ //
+    Jump = 0x60,
+    JumpNotTrue = 0x61,
 }
 
 impl Opcode {
     pub fn from_byte(byte: u8) -> Result<Self, String> {
-        match byte {
-            0x20 => Ok(Opcode::Add),
-            0x21 => Ok(Opcode::Sub),
-            0x22 => Ok(Opcode::Mul),
-            0x23 => Ok(Opcode::Div),
-            0x24 => Ok(Opcode::Equal),
-            0x25 => Ok(Opcode::NotEqual),
-            0x26 => Ok(Opcode::GreaterThan),
-            0x27 => Ok(Opcode::LessThan),
-            0x28 => Ok(Opcode::Bang),
-            0x29 => Ok(Opcode::Negate),
+        let opcode = match byte {
+            0x00 => Opcode::Nop,
 
-            0x40 => Ok(Opcode::Pop),
-            0x41 => Ok(Opcode::PushTrue),
-            0x42 => Ok(Opcode::PushFalse),
-            0x43 => Ok(Opcode::PushConstant),
+            0x20 => Opcode::Add,
+            0x21 => Opcode::Sub,
+            0x22 => Opcode::Mul,
+            0x23 => Opcode::Div,
+            0x24 => Opcode::Equal,
+            0x25 => Opcode::NotEqual,
+            0x26 => Opcode::GreaterThan,
+            0x27 => Opcode::LessThan,
+            0x28 => Opcode::Bang,
+            0x29 => Opcode::Negate,
 
-            _ => Err(format!("Unknown opcode: 0x{:02X}", byte)),
-        }
+            0x40 => Opcode::Pop,
+            0x41 => Opcode::PushTrue,
+            0x42 => Opcode::PushFalse,
+            0x43 => Opcode::PushNull,
+            0x44 => Opcode::PushConstant,
+
+            0x60 => Opcode::Jump,
+            0x61 => Opcode::JumpNotTrue,
+
+            _ => return Err(format!("Unknown opcode: 0x{:02X}", byte)),
+        };
+
+        Ok(opcode)
     }
 
     pub fn num_operands(&self) -> usize {
         match self {
             Opcode::PushConstant => 2,
+            Opcode::Jump => 2,
+            Opcode::JumpNotTrue => 2,
             _ => 0,
         }
     }

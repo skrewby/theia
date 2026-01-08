@@ -1,4 +1,4 @@
-use crate::ast::{Expression, InfixExpression, PrefixExpression};
+use crate::ast::{Expression, IfExpression, InfixExpression, PrefixExpression};
 use crate::opcode::Opcode;
 use crate::token::TokenType;
 use crate::{ast::Statement, object::Object};
@@ -9,10 +9,28 @@ pub struct Bytecode {
     pub constants: Vec<Object>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct EmittedInstruction {
+    opcode: Opcode,
+    position: u16,
+}
+
+impl Default for EmittedInstruction {
+    fn default() -> Self {
+        Self {
+            opcode: Opcode::Nop,
+            position: 0,
+        }
+    }
+}
+
 struct CompilerState {
     instructions: Vec<u8>,
     constants: Vec<Object>,
     errors: Vec<String>,
+
+    latest_instruction: EmittedInstruction,
+    previous_instruction: EmittedInstruction,
 }
 
 impl CompilerState {
@@ -21,6 +39,8 @@ impl CompilerState {
             instructions: Vec::new(),
             constants: Vec::new(),
             errors: Vec::new(),
+            latest_instruction: EmittedInstruction::default(),
+            previous_instruction: EmittedInstruction::default(),
         }
     }
 
@@ -33,7 +53,14 @@ impl CompilerState {
     }
 
     fn emit(&mut self, op: Opcode, operands: &[&[u8]]) {
+        let position = self.get_current_position();
+        self.previous_instruction = self.latest_instruction;
         self.instructions.push(op as u8);
+        self.latest_instruction = EmittedInstruction {
+            opcode: op,
+            position,
+        };
+
         for operand in operands {
             self.instructions.extend_from_slice(operand);
         }
@@ -42,6 +69,21 @@ impl CompilerState {
     fn add_constant(&mut self, obj: Object) -> u16 {
         self.constants.push(obj);
         (self.constants.len() - 1) as u16
+    }
+
+    fn remove_latest_instruction(&mut self) {
+        self.instructions
+            .truncate(self.latest_instruction.position as usize);
+        self.latest_instruction = self.previous_instruction;
+    }
+
+    fn patch(&mut self, start_pos: u16, data: &[u8]) {
+        let p = start_pos as usize;
+        self.instructions[p..p + data.len()].copy_from_slice(data);
+    }
+
+    fn get_current_position(&self) -> u16 {
+        self.instructions.len() as u16
     }
 }
 
@@ -60,9 +102,21 @@ pub fn compile(statement: &Statement) -> Result<Bytecode, Vec<String>> {
     })
 }
 
+fn make_bytecode(op: Opcode, operands: &[&[u8]]) -> Vec<u8> {
+    let mut instructions = Vec::new();
+
+    instructions.push(op as u8);
+
+    for operand in operands {
+        instructions.extend_from_slice(operand);
+    }
+
+    instructions
+}
+
 fn compile_statement(state: &mut CompilerState, statement: &Statement) {
     match statement {
-        Statement::Program(statements) => {
+        Statement::Program(statements) | Statement::Block(statements) => {
             for stmt in statements {
                 compile_statement(state, stmt);
             }
@@ -84,6 +138,7 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
         Expression::Int(val) => create_integer(state, *val),
         Expression::Float(val) => create_float(state, *val),
         Expression::Boolean(val) => push_boolean(state, *val),
+        Expression::If(ex) => compile_if_expression(state, ex),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -124,6 +179,56 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
     }
 }
 
+fn compile_if_expression(state: &mut CompilerState, expression: &IfExpression) {
+    compile_expression(state, &expression.condition);
+
+    let jump_not_true_pos = state.get_current_position();
+    state.emit(Opcode::JumpNotTrue, &[&[0xFF, 0xFF]]);
+
+    compile_consequence(state, &expression.consequence);
+
+    let jump_pos = state.get_current_position();
+    state.emit(Opcode::Jump, &[&[0xFF, 0xFF]]);
+
+    let after_pos = compile_alternative(state, &expression.alternative, jump_pos);
+
+    let data = make_bytecode(Opcode::JumpNotTrue, &[&after_pos.to_be_bytes()]);
+    state.patch(jump_not_true_pos, &data);
+}
+
+fn compile_consequence(state: &mut CompilerState, statement: &Box<Statement>) {
+    compile_statement(state, statement);
+    if state.latest_instruction.opcode == Opcode::Pop {
+        state.remove_latest_instruction();
+    }
+}
+
+fn compile_alternative(
+    state: &mut CompilerState,
+    statement: &Option<Box<Statement>>,
+    jump_pos: u16,
+) -> u16 {
+    let alternative_pos = state.get_current_position();
+
+    let Some(alternative) = statement else {
+        state.emit(Opcode::PushNull, &[]);
+        let data = make_bytecode(Opcode::Jump, &[&state.get_current_position().to_be_bytes()]);
+        state.patch(jump_pos, &data);
+        return alternative_pos;
+    };
+
+    compile_statement(state, alternative);
+    if state.latest_instruction.opcode == Opcode::Pop {
+        state.remove_latest_instruction();
+    }
+
+    let after_alternative_pos = state.get_current_position();
+    let data = make_bytecode(Opcode::Jump, &[&after_alternative_pos.to_be_bytes()]);
+    state.patch(jump_pos, &data);
+
+    alternative_pos
+}
+
 fn create_integer(state: &mut CompilerState, val: i64) {
     let const_idx = state.add_constant(Object::Int(val));
     state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
@@ -162,11 +267,65 @@ mod tests {
             Opcode::Add as u8,
             Opcode::Pop as u8,
         ];
+        let constants = vec![Object::Int(10), Object::Int(20)];
 
-        check_bytecode_match(input, &expected);
+        check_bytecode_match(input, &expected, &constants);
     }
 
-    fn check_bytecode_match(input: &str, expected: &Vec<u8>) {
+    #[test]
+    fn conditionals() {
+        let input = "
+            if true { 10 }; 100;
+            if true { 20 } else { 30 }; 200;
+        ";
+        let expected = vec![
+            Opcode::PushTrue as u8,
+            Opcode::JumpNotTrue as u8,
+            0x00,
+            0x0A,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::Jump as u8,
+            0x00,
+            0x0B,
+            Opcode::PushNull as u8,
+            Opcode::Pop as u8,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::Pop as u8,
+            Opcode::PushTrue as u8,
+            Opcode::JumpNotTrue as u8,
+            0x00,
+            0x1A,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x02,
+            Opcode::Jump as u8,
+            0x00,
+            0x1D,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x03,
+            Opcode::Pop as u8,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x04,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Int(10),
+            Object::Int(100),
+            Object::Int(20),
+            Object::Int(30),
+            Object::Int(200),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    fn check_bytecode_match(input: &str, expected: &Vec<u8>, constants: &Vec<Object>) {
         let tokens = lex_input(input);
         let ast = parse_program(tokens).expect("Parse error");
         let bytecode = match compile(&ast) {
@@ -180,5 +339,6 @@ mod tests {
         };
 
         assert_eq!(bytecode.instructions, *expected, "Bytecode mismatch");
+        assert_eq!(bytecode.constants, *constants, "Constants mismatch");
     }
 }

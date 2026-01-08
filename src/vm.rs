@@ -75,7 +75,6 @@ impl VM {
 
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
-            // ---------- Operators ---------- //
             Opcode::PushConstant => op_constant_push(self)?,
             Opcode::Add => op_add(self)?,
             Opcode::Sub => op_sub(self)?,
@@ -83,17 +82,19 @@ impl VM {
             Opcode::Div => op_div(self)?,
             Opcode::Bang => op_bang(self)?,
             Opcode::Negate => op_negate(self)?,
-
-            // ---------- Stack ---------- //
             Opcode::Pop => {
                 self.pop()?;
             }
             Opcode::PushTrue => self.push(Object::Boolean(true))?,
             Opcode::PushFalse => self.push(Object::Boolean(false))?,
+            Opcode::PushNull => self.push(Object::Null)?,
             Opcode::Equal => op_comparison(self, opcode)?,
             Opcode::NotEqual => op_comparison(self, opcode)?,
             Opcode::GreaterThan => op_comparison(self, opcode)?,
             Opcode::LessThan => op_comparison(self, opcode)?,
+            Opcode::Jump => op_jump(self)?,
+            Opcode::JumpNotTrue => op_jump_not_true(self)?,
+            Opcode::Nop => {}
         };
 
         Ok(())
@@ -177,7 +178,9 @@ impl VM {
 }
 
 fn op_constant_push(vm: &mut VM) -> Result<(), String> {
-    let idx = vm.get_operands(2).to_u16()?;
+    let idx = vm
+        .get_operands(Opcode::PushConstant.num_operands())
+        .to_u16()?;
     let constant = vm.get_constant(idx)?;
     vm.push(constant)?;
     Ok(())
@@ -396,10 +399,6 @@ fn op_bang(vm: &mut VM) -> Result<(), String> {
 }
 
 fn eval_prefix_bang(right: &Object) -> Object {
-    if right.is_null() {
-        return Object::Null;
-    }
-
     Object::Boolean(!right.bool_value())
 }
 
@@ -418,6 +417,26 @@ fn eval_prefix_negate(right: &Object) -> Object {
         Object::Float(val) => Object::Float(-val),
         _ => Object::Null,
     }
+}
+
+fn op_jump(vm: &mut VM) -> Result<(), String> {
+    let position = vm.get_operands(Opcode::Jump.num_operands()).to_u16()?;
+    vm.reg.ip = position as usize;
+
+    Ok(())
+}
+
+fn op_jump_not_true(vm: &mut VM) -> Result<(), String> {
+    let position = vm
+        .get_operands(Opcode::JumpNotTrue.num_operands())
+        .to_u16()?;
+
+    let condition = vm.pop()?;
+    if !condition.bool_value() {
+        vm.reg.ip = position as usize;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -561,6 +580,47 @@ mod tests {
             Object::Boolean(false),
             Object::Boolean(true),
             Object::Boolean(false),
+        ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn if_expression() {
+        let input = "
+            if true {
+                4
+            } else {
+                2
+            }
+
+            if false {
+                4
+            } else {
+                2
+            }
+
+            if false {
+                4
+            }
+
+            if 3 > 2 {
+                4
+            } else {
+                2
+            }
+
+            !(if false { 3 })
+
+            if ((if (false) { 30 })) { 80 } else { 2026 }
+        ";
+        let expected = vec![
+            Object::Int(4),
+            Object::Int(2),
+            Object::Null,
+            Object::Int(4),
+            Object::Boolean(true),
+            Object::Int(2026),
         ];
 
         run_test(input, expected);
