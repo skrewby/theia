@@ -863,11 +863,13 @@ mod tests {
     #[test]
     fn arrays() {
         let input = "
-            [1, 2 * 2, 5]
-            foo[2]
+            [];
+            [1, 2 * 2, 5];
+            foo[2];
         ";
 
         let expected_expressions = vec![
+            Expression::Array(Vec::new()),
             Expression::Array(vec![
                 Expression::Int(1),
                 Expression::Infix(InfixExpression {
@@ -885,7 +887,7 @@ mod tests {
             }),
         ];
 
-        let statements = setup_test(&input, 2);
+        let statements = setup_test(&input, 3);
         check_expressions_match(statements, expected_expressions);
     }
 

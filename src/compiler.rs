@@ -1,4 +1,6 @@
-use crate::ast::{Expression, IfExpression, InfixExpression, LetStatement, PrefixExpression};
+use crate::ast::{
+    Expression, IfExpression, IndexExpression, InfixExpression, LetStatement, PrefixExpression,
+};
 use crate::compiler::symbol_table::SymbolTable;
 use crate::opcode::Opcode;
 use crate::token::TokenType;
@@ -188,6 +190,8 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
         Expression::Boolean(val) => push_boolean(state, *val),
         Expression::If(ex) => compile_if_expression(state, ex),
         Expression::Identifier(val) => compile_identifier_expression(state, val),
+        Expression::Array(val) => compile_array(state, val),
+        Expression::Index(index) => compile_index(state, index),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -311,6 +315,21 @@ fn compile_variable_assign(state: &mut CompilerState, statement: &LetStatement) 
     };
     let index = state.symbol_table.define(identifier);
     state.emit(Opcode::SetGlobal, &[&index.to_be_bytes()]);
+}
+
+fn compile_array(state: &mut CompilerState, expressions: &Vec<Expression>) {
+    for exp in expressions {
+        compile_expression(state, exp);
+    }
+
+    let array_len = expressions.len() as u16;
+    state.emit(Opcode::Array, &[&array_len.to_be_bytes()]);
+}
+
+fn compile_index(state: &mut CompilerState, expression: &IndexExpression) {
+    compile_expression(state, &expression.left);
+    compile_expression(state, &expression.index);
+    state.emit(Opcode::Index, &[]);
 }
 
 #[cfg(test)]
@@ -446,6 +465,50 @@ mod tests {
             Object::Str("theia".to_owned()),
             Object::Str("hello".to_owned()),
             Object::Str("world".to_owned()),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn arrays() {
+        let input = "
+            [];
+            [1, 2, 3 + 2][1];
+        ";
+        let expected = vec![
+            Opcode::Array as u8,
+            0x00,
+            0x00,
+            Opcode::Pop as u8,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x02,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x03,
+            Opcode::Add as u8,
+            Opcode::Array as u8,
+            0x00,
+            0x03,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x04,
+            Opcode::Index as u8,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3),
+            Object::Int(2),
+            Object::Int(1),
         ];
 
         check_bytecode_match(input, &expected, &constants);

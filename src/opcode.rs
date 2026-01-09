@@ -1,5 +1,10 @@
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// Opcodes used with the Theia Virtual Machine
+/// This is a big endian architecture that operates multiples of bytes.
+///
+/// An opcode that has two operands will consist of the following
+/// slice in memory: [opcode,byte,byte]
 pub enum Opcode {
     /// Do nothing
     Nop = 0x00,
@@ -44,12 +49,19 @@ pub enum Opcode {
     JumpNotTrue = 0x61,
 
     // ----------- Globals ----------- //
-    /// Bind the top value on the stack to global variable num 0xaabb
-    /// 0x80 aa bb
+    /// Bind the top value on the stack to global variable num 0xnnnn
+    /// 0x80 nn nn
     SetGlobal = 0x80,
-    /// Push global variable num 0xaabb to the stack
-    /// 0x81 aa bb
+    /// Push global variable num 0xnnnn to the stack
+    /// 0x81 nn nn
     GetGlobal = 0x81,
+
+    // --------- Composites ---------- //
+    // Pops nnnn elements from the stack then builds and push the array
+    // 0x90 nn nn
+    Array = 0x90,
+    /// Pops two elements from the stack, the index number then the object to be indexed
+    Index = 0x91,
 }
 
 impl Opcode {
@@ -80,6 +92,9 @@ impl Opcode {
             0x80 => Opcode::SetGlobal,
             0x81 => Opcode::GetGlobal,
 
+            0x90 => Opcode::Array,
+            0x91 => Opcode::Index,
+
             _ => return Err(format!("Unknown opcode: 0x{:02X}", byte)),
         };
 
@@ -93,6 +108,7 @@ impl Opcode {
             Opcode::GetGlobal => 2,
             Opcode::Jump => 2,
             Opcode::JumpNotTrue => 2,
+            Opcode::Array => 2,
             _ => 0,
         }
     }

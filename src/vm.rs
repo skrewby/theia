@@ -114,6 +114,8 @@ impl VM {
             Opcode::GetGlobal => op_get_global(self),
             Opcode::Jump => op_jump(self),
             Opcode::JumpNotTrue => op_jump_not_true(self),
+            Opcode::Array => op_array(self),
+            Opcode::Index => op_index(self),
         }
     }
 
@@ -489,6 +491,70 @@ fn op_get_global(vm: &mut VM) -> Result<(), String> {
     Ok(())
 }
 
+fn op_array(vm: &mut VM) -> Result<(), String> {
+    let array_length = vm.get_operands(Opcode::Array.num_operands()).to_u16()?;
+
+    let mut array = Vec::new();
+    for _ in 0..array_length {
+        let element = vm.pop()?;
+        array.push(element);
+    }
+
+    array.reverse();
+    vm.push(Object::Array(array))?;
+
+    Ok(())
+}
+
+fn op_index(vm: &mut VM) -> Result<(), String> {
+    let index = vm.pop()?;
+    let left = vm.pop()?;
+
+    let obj = eval_index(&left, &index);
+    vm.push(obj)?;
+
+    Ok(())
+}
+
+fn eval_index(left: &Object, index: &Object) -> Object {
+    if matches!(left, Object::Error(_)) {
+        return left.clone();
+    }
+
+    if matches!(index, Object::Error(_)) {
+        return index.clone();
+    }
+
+    eval_index_expression(left, index)
+}
+
+fn eval_index_expression(left: &Object, index: &Object) -> Object {
+    let Object::Int(i) = index else {
+        return Object::Error(format!(
+            "Only able to index with integer value. Attempted with {:?}",
+            index
+        ));
+    };
+    if *i < 0 {
+        return Object::Error(format!(
+            "Only able to index with positive integer values. Attempted with {:?}",
+            index
+        ));
+    }
+
+    match left {
+        Object::Array(arr) => eval_array_index(arr, *i),
+        _ => Object::Error(format!("Not able to index {:?}", left)),
+    }
+}
+
+fn eval_array_index(array: &Vec<Object>, index: i64) -> Object {
+    if index as usize >= array.len() {
+        return Object::Null;
+    }
+    return array[index as usize].clone();
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
@@ -699,6 +765,24 @@ mod tests {
             x + \" \" + y
         ";
         let expected = vec![Object::Str("Hello World".to_owned())];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn arrays() {
+        let input = "
+            [];
+            [1, 2, 3];
+            [1 + 2, 3 * 4, 5 + 6];
+            [1 + 2, 3 * 4, 5 + 6][2];
+        ";
+        let expected = vec![
+            Object::Array(Vec::new()),
+            Object::Array(vec![Object::Int(1), Object::Int(2), Object::Int(3)]),
+            Object::Array(vec![Object::Int(3), Object::Int(12), Object::Int(11)]),
+            Object::Int(11),
+        ];
 
         run_test(input, expected);
     }
