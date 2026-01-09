@@ -691,6 +691,18 @@ mod tests {
         run_test(input, expected);
     }
 
+    #[test]
+    fn strings() {
+        let input = "
+            let x = \"Hello\"
+            let y = \"World\"
+            x + \" \" + y
+        ";
+        let expected = vec![Object::Str("Hello World".to_owned())];
+
+        run_test(input, expected);
+    }
+
     fn run_test(input: &str, expected: Vec<Object>) {
         let tokens = lex_input(input);
         let ast = match parse_program(tokens) {

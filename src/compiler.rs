@@ -182,8 +182,9 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
     match expression {
         Expression::Prefix(prefix) => compile_prefix_expression(state, prefix),
         Expression::Infix(infix) => compile_infix_expression(state, infix),
-        Expression::Int(val) => create_integer(state, *val),
-        Expression::Float(val) => create_float(state, *val),
+        Expression::Int(val) => create_constant(state, Object::Int(*val)),
+        Expression::Float(val) => create_constant(state, Object::Float(*val)),
+        Expression::Str(val) => create_constant(state, Object::Str(val.to_owned())),
         Expression::Boolean(val) => push_boolean(state, *val),
         Expression::If(ex) => compile_if_expression(state, ex),
         Expression::Identifier(val) => compile_identifier_expression(state, val),
@@ -286,13 +287,8 @@ fn compile_alternative(
     alternative_pos
 }
 
-fn create_integer(state: &mut CompilerState, val: i64) {
-    let const_idx = state.add_constant(Object::Int(val));
-    state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
-}
-
-fn create_float(state: &mut CompilerState, val: f64) {
-    let const_idx = state.add_constant(Object::Float(val));
+fn create_constant(state: &mut CompilerState, obj: Object) {
+    let const_idx = state.add_constant(obj);
     state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
 }
 
@@ -422,6 +418,35 @@ mod tests {
             Opcode::Pop as u8,
         ];
         let constants = vec![Object::Int(1)];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn strings() {
+        let input = "
+            \"theia\";
+            \"hello\" + \"world\";
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::Pop as u8,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x02,
+            Opcode::Add as u8,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Str("theia".to_owned()),
+            Object::Str("hello".to_owned()),
+            Object::Str("world".to_owned()),
+        ];
 
         check_bytecode_match(input, &expected, &constants);
     }
