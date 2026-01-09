@@ -8,6 +8,12 @@
 pub enum Opcode {
     /// Do nothing
     Nop = 0x00,
+    /// Pop the top value of the stack and calls it
+    Call = 0x01,
+    /// Return from the function
+    Return = 0x02,
+    /// Return from the function and push returned value
+    ReturnValue = 0x03,
 
     // ---------- Operators ---------- //
     /// Pop the top two values of the stack and push addition result
@@ -68,6 +74,9 @@ impl Opcode {
     pub fn from_byte(byte: u8) -> Result<Self, String> {
         let opcode = match byte {
             0x00 => Opcode::Nop,
+            0x01 => Opcode::Call,
+            0x02 => Opcode::Return,
+            0x03 => Opcode::ReturnValue,
 
             0x20 => Opcode::Add,
             0x21 => Opcode::Sub,

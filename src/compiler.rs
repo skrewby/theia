@@ -1,7 +1,9 @@
 use crate::ast::{
-    Expression, IfExpression, IndexExpression, InfixExpression, LetStatement, PrefixExpression,
+    Expression, FunctionExpression, IfExpression, IndexExpression, InfixExpression, LetStatement,
+    PrefixExpression,
 };
 use crate::compiler::symbol_table::SymbolTable;
+use crate::object::FunctionObject;
 use crate::opcode::Opcode;
 use crate::token::TokenType;
 use crate::{ast::Statement, object::Object};
@@ -29,37 +31,56 @@ impl Default for EmittedInstruction {
     }
 }
 
-struct CompilerState {
+#[derive(Debug)]
+struct Scope {
     instructions: Vec<u8>,
+    latest_instruction: EmittedInstruction,
+    previous_instruction: EmittedInstruction,
+}
+
+impl Default for Scope {
+    fn default() -> Self {
+        Self {
+            instructions: Vec::new(),
+            latest_instruction: EmittedInstruction::default(),
+            previous_instruction: EmittedInstruction::default(),
+        }
+    }
+}
+
+struct CompilerState {
     constants: Vec<Object>,
     errors: Vec<String>,
 
-    latest_instruction: EmittedInstruction,
-    previous_instruction: EmittedInstruction,
-
+    scopes: Vec<Scope>,
+    scope_index: usize,
     symbol_table: SymbolTable,
 }
 
 impl CompilerState {
     fn new() -> CompilerState {
+        let mut scopes = Vec::new();
+        scopes.push(Scope::default());
+
         CompilerState {
-            instructions: Vec::new(),
             constants: Vec::new(),
             errors: Vec::new(),
-            latest_instruction: EmittedInstruction::default(),
-            previous_instruction: EmittedInstruction::default(),
             symbol_table: SymbolTable::new(),
+            scopes,
+            scope_index: 0,
         }
     }
 
     fn new_with_state(symbol_table: SymbolTable, constants: Vec<Object>) -> CompilerState {
+        let mut scopes = Vec::new();
+        scopes.push(Scope::default());
+
         CompilerState {
-            instructions: Vec::new(),
-            errors: Vec::new(),
-            latest_instruction: EmittedInstruction::default(),
-            previous_instruction: EmittedInstruction::default(),
-            symbol_table,
             constants,
+            errors: Vec::new(),
+            symbol_table,
+            scopes,
+            scope_index: 0,
         }
     }
 
@@ -71,17 +92,57 @@ impl CompilerState {
         !self.errors.is_empty()
     }
 
+    fn instructions(&self) -> &Vec<u8> {
+        &self.scopes[self.scope_index].instructions
+    }
+
+    fn push_instruction(&mut self, opcode: Opcode) {
+        self.scopes[self.scope_index]
+            .instructions
+            .push(opcode as u8);
+    }
+
+    fn update_previous_instruction(&mut self) {
+        self.scopes[self.scope_index].previous_instruction =
+            self.scopes[self.scope_index].latest_instruction;
+    }
+
+    fn latest_instruction(&self) -> EmittedInstruction {
+        self.scopes[self.scope_index].latest_instruction
+    }
+
+    fn truncate_instruction(&mut self, position: usize) {
+        self.scopes[self.scope_index]
+            .instructions
+            .truncate(position);
+    }
+
+    fn update_latest_instruction(&mut self) {
+        self.scopes[self.scope_index].latest_instruction =
+            self.scopes[self.scope_index].previous_instruction;
+    }
+
+    fn set_latest_instruction(&mut self, opcode: Opcode, position: u16) {
+        self.scopes[self.scope_index].latest_instruction = EmittedInstruction { opcode, position };
+    }
+
+    fn replace_latest_with(&mut self, opcode: Opcode) {
+        let pos = self.scopes[self.scope_index].latest_instruction.position;
+        let data = (opcode as u8).to_be_bytes();
+        self.patch(pos, &data);
+        self.scopes[self.scope_index].latest_instruction.opcode = opcode;
+    }
+
     fn emit(&mut self, op: Opcode, operands: &[&[u8]]) {
         let position = self.get_current_position();
-        self.previous_instruction = self.latest_instruction;
-        self.instructions.push(op as u8);
-        self.latest_instruction = EmittedInstruction {
-            opcode: op,
-            position,
-        };
+        self.update_previous_instruction();
+        self.push_instruction(op);
+        self.set_latest_instruction(op, position);
 
         for operand in operands {
-            self.instructions.extend_from_slice(operand);
+            self.scopes[self.scope_index]
+                .instructions
+                .extend_from_slice(operand);
         }
     }
 
@@ -91,18 +152,39 @@ impl CompilerState {
     }
 
     fn remove_latest_instruction(&mut self) {
-        self.instructions
-            .truncate(self.latest_instruction.position as usize);
-        self.latest_instruction = self.previous_instruction;
+        self.truncate_instruction(self.latest_instruction().position as usize);
+        self.update_latest_instruction();
     }
 
     fn patch(&mut self, start_pos: u16, data: &[u8]) {
         let p = start_pos as usize;
-        self.instructions[p..p + data.len()].copy_from_slice(data);
+        self.scopes[self.scope_index].instructions[p..p + data.len()].copy_from_slice(data);
     }
 
     fn get_current_position(&self) -> u16 {
-        self.instructions.len() as u16
+        self.scopes[self.scope_index].instructions.len() as u16
+    }
+
+    fn enter_scope(&mut self) {
+        self.scopes.push(Scope::default());
+        self.scope_index += 1;
+    }
+
+    fn leave_scope(&mut self) -> Vec<u8> {
+        let instructions = self.instructions().clone();
+
+        self.scope_index -= 1;
+        self.scopes.truncate(self.scope_index + 1);
+
+        instructions
+    }
+
+    fn is_latest(&mut self, opcode: Opcode) -> bool {
+        if self.instructions().len() == 0 {
+            return false;
+        }
+
+        self.latest_instruction().opcode == opcode
     }
 }
 
@@ -116,7 +198,7 @@ pub fn compile(statement: &Statement) -> Result<Bytecode, Vec<String>> {
     }
 
     Ok(Bytecode {
-        instructions: state.instructions,
+        instructions: state.instructions().clone(),
         constants: state.constants,
     })
 }
@@ -141,7 +223,7 @@ pub fn compile_with_state(
 
     Ok(CompilationResult {
         bytecode: Bytecode {
-            instructions: state.instructions,
+            instructions: state.instructions().clone(),
             constants: state.constants,
         },
         symbol_table: state.symbol_table,
@@ -174,6 +256,10 @@ fn compile_statement(state: &mut CompilerState, statement: &Statement) {
         Statement::VariableAssign(statement) => {
             compile_variable_assign(state, statement);
         }
+        Statement::Return(expression) => {
+            compile_expression(state, expression);
+            state.emit(Opcode::ReturnValue, &[]);
+        }
         _ => {
             state.add_error(format!("Unsupported statement: {:?}", statement));
         }
@@ -192,6 +278,7 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
         Expression::Identifier(val) => compile_identifier_expression(state, val),
         Expression::Array(val) => compile_array(state, val),
         Expression::Index(index) => compile_index(state, index),
+        Expression::Function(func) => compile_function(state, func),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -260,7 +347,7 @@ fn compile_if_expression(state: &mut CompilerState, expression: &IfExpression) {
 
 fn compile_consequence(state: &mut CompilerState, statement: &Box<Statement>) {
     compile_statement(state, statement);
-    if state.latest_instruction.opcode == Opcode::Pop {
+    if state.is_latest(Opcode::Pop) {
         state.remove_latest_instruction();
     }
 }
@@ -280,7 +367,7 @@ fn compile_alternative(
     };
 
     compile_statement(state, alternative);
-    if state.latest_instruction.opcode == Opcode::Pop {
+    if state.is_latest(Opcode::Pop) {
         state.remove_latest_instruction();
     }
 
@@ -289,6 +376,22 @@ fn compile_alternative(
     state.patch(jump_pos, &data);
 
     alternative_pos
+}
+
+fn compile_function(state: &mut CompilerState, func: &FunctionExpression) {
+    state.enter_scope();
+    compile_statement(state, &func.body);
+    if state.is_latest(Opcode::Pop) {
+        state.replace_latest_with(Opcode::ReturnValue);
+    }
+    if !state.is_latest(Opcode::ReturnValue) {
+        state.emit(Opcode::Return, &[]);
+    }
+
+    let instructions = state.leave_scope();
+    let obj = Object::Function(FunctionObject { instructions });
+    let const_idx = state.add_constant(obj);
+    state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
 }
 
 fn create_constant(state: &mut CompilerState, obj: Object) {
@@ -334,7 +437,7 @@ fn compile_index(state: &mut CompilerState, expression: &IndexExpression) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex_input, parser::parse_program};
+    use crate::{lexer::lex_input, object::FunctionObject, parser::parse_program};
 
     use super::*;
 
@@ -512,6 +615,123 @@ mod tests {
         ];
 
         check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn functions_explicit_return() {
+        let input = "
+            fn() { return 5 + 10 }
+        ";
+        let expected = vec![Opcode::PushConstant as u8, 0x00, 0x02, Opcode::Pop as u8];
+        let constants = vec![
+            Object::Int(5),
+            Object::Int(10),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x00,
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x01,
+                    Opcode::Add as u8,
+                    Opcode::ReturnValue as u8,
+                ],
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn functions_implicit_return() {
+        let input = "
+            fn() { 5 + 10 }
+        ";
+        let expected = vec![Opcode::PushConstant as u8, 0x00, 0x02, Opcode::Pop as u8];
+        let constants = vec![
+            Object::Int(5),
+            Object::Int(10),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x00,
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x01,
+                    Opcode::Add as u8,
+                    Opcode::ReturnValue as u8,
+                ],
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn functions_multiple_expressions() {
+        let input = "
+            fn() { 5; 10 }
+        ";
+        let expected = vec![Opcode::PushConstant as u8, 0x00, 0x02, Opcode::Pop as u8];
+        let constants = vec![
+            Object::Int(5),
+            Object::Int(10),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x00,
+                    Opcode::Pop as u8,
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x01,
+                    Opcode::ReturnValue as u8,
+                ],
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn functions_no_return() {
+        let input = "
+            fn() { }
+        ";
+        let expected = vec![Opcode::PushConstant as u8, 0x00, 0x00, Opcode::Pop as u8];
+        let constants = vec![Object::Function(FunctionObject {
+            instructions: vec![Opcode::Return as u8],
+        })];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn scopes() {
+        let mut compiler = CompilerState::new();
+        assert_eq!(compiler.scope_index, 0);
+
+        compiler.emit(Opcode::Mul, &[]);
+        compiler.enter_scope();
+        assert_eq!(compiler.scope_index, 1);
+
+        compiler.emit(Opcode::Sub, &[]);
+        assert_eq!(compiler.instructions().len(), 1);
+
+        compiler.leave_scope();
+        assert_eq!(compiler.scope_index, 0);
+
+        compiler.emit(Opcode::Add, &[]);
+        assert_eq!(compiler.instructions().len(), 2);
+        assert_eq!(compiler.latest_instruction().opcode, Opcode::Add);
+        assert_eq!(
+            compiler.scopes[compiler.scope_index]
+                .previous_instruction
+                .opcode,
+            Opcode::Mul
+        );
     }
 
     fn check_bytecode_match(input: &str, expected: &Vec<u8>, constants: &Vec<Object>) {

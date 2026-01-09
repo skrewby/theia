@@ -5,8 +5,6 @@ use crate::{repl::Repl, runner::run_script};
 mod ast;
 mod builtin;
 mod compiler;
-mod environment;
-mod evaluator;
 mod lexer;
 mod object;
 mod opcode;

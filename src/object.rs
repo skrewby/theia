@@ -1,11 +1,4 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use crate::{
-    ast::{Expression, Statement},
-    builtin::BuiltInFunction,
-    environment::Environment,
-};
+use crate::builtin::BuiltInFunction;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
@@ -24,14 +17,12 @@ pub enum Object {
 
 #[derive(Debug, Clone)]
 pub struct FunctionObject {
-    pub parameters: Vec<Expression>,
-    pub body: Box<Statement>,
-    pub env: Rc<RefCell<Environment>>,
+    pub instructions: Vec<u8>,
 }
 
 impl PartialEq for FunctionObject {
     fn eq(&self, other: &Self) -> bool {
-        self.parameters == other.parameters && self.body == other.body
+        self.instructions == other.instructions
     }
 }
 

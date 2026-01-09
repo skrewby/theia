@@ -95,6 +95,9 @@ impl VM {
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
             Opcode::Nop => Ok(()),
+            Opcode::Call => todo!(),
+            Opcode::Return => todo!(),
+            Opcode::ReturnValue => todo!(),
             Opcode::Add => op_add(self),
             Opcode::Sub => op_sub(self),
             Opcode::Mul => op_mul(self),
