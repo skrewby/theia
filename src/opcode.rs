@@ -36,12 +36,20 @@ pub enum Opcode {
     /// Pushes null to the stack
     PushNull = 0x43,
     /// Push constant at index 0xaabb in the constant array to the stack
-    /// 0x60 aa bb
+    /// 0x44 aa bb
     PushConstant = 0x44,
 
     // ------------ Jumps ------------ //
     Jump = 0x60,
     JumpNotTrue = 0x61,
+
+    // ----------- Globals ----------- //
+    /// Bind the top value on the stack to global variable num 0xaabb
+    /// 0x80 aa bb
+    SetGlobal = 0x80,
+    /// Push global variable num 0xaabb to the stack
+    /// 0x81 aa bb
+    GetGlobal = 0x81,
 }
 
 impl Opcode {
@@ -69,6 +77,9 @@ impl Opcode {
             0x60 => Opcode::Jump,
             0x61 => Opcode::JumpNotTrue,
 
+            0x80 => Opcode::SetGlobal,
+            0x81 => Opcode::GetGlobal,
+
             _ => return Err(format!("Unknown opcode: 0x{:02X}", byte)),
         };
 
@@ -78,6 +89,8 @@ impl Opcode {
     pub fn num_operands(&self) -> usize {
         match self {
             Opcode::PushConstant => 2,
+            Opcode::SetGlobal => 2,
+            Opcode::GetGlobal => 2,
             Opcode::Jump => 2,
             Opcode::JumpNotTrue => 2,
             _ => 0,

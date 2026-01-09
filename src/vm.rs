@@ -1,6 +1,7 @@
 use crate::{compiler::Bytecode, object::Object, opcode::Opcode};
 
 const STACK_SIZE: usize = 2048;
+const MAX_GLOBALS: usize = 65536;
 
 pub trait ByteArrayExt {
     #[allow(dead_code)]
@@ -31,6 +32,8 @@ pub struct VM {
 
     reg: Registers,
     last_popped: Option<Object>,
+
+    globals: Vec<Object>,
 }
 
 pub struct Registers {
@@ -54,6 +57,18 @@ impl VM {
             stack: Vec::with_capacity(STACK_SIZE),
             reg: Registers::new(),
             last_popped: None,
+            globals: Vec::with_capacity(MAX_GLOBALS),
+        }
+    }
+
+    pub fn new_with_state(bytecode: Bytecode, globals: Vec<Object>) -> Self {
+        Self {
+            constants: bytecode.constants,
+            instructions: bytecode.instructions,
+            stack: Vec::with_capacity(STACK_SIZE),
+            reg: Registers::new(),
+            last_popped: None,
+            globals,
         }
     }
 
@@ -66,6 +81,10 @@ impl VM {
         Ok(self.stack_last_popped())
     }
 
+    pub fn take_globals(self) -> Vec<Object> {
+        self.globals
+    }
+
     fn fetch(&mut self) -> Result<Opcode, String> {
         let opcode = Opcode::from_byte(self.instructions[self.reg.ip]);
         self.reg.ip += 1;
@@ -75,29 +94,27 @@ impl VM {
 
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
-            Opcode::PushConstant => op_constant_push(self)?,
-            Opcode::Add => op_add(self)?,
-            Opcode::Sub => op_sub(self)?,
-            Opcode::Mul => op_mul(self)?,
-            Opcode::Div => op_div(self)?,
-            Opcode::Bang => op_bang(self)?,
-            Opcode::Negate => op_negate(self)?,
-            Opcode::Pop => {
-                self.pop()?;
-            }
-            Opcode::PushTrue => self.push(Object::Boolean(true))?,
-            Opcode::PushFalse => self.push(Object::Boolean(false))?,
-            Opcode::PushNull => self.push(Object::Null)?,
-            Opcode::Equal => op_comparison(self, opcode)?,
-            Opcode::NotEqual => op_comparison(self, opcode)?,
-            Opcode::GreaterThan => op_comparison(self, opcode)?,
-            Opcode::LessThan => op_comparison(self, opcode)?,
-            Opcode::Jump => op_jump(self)?,
-            Opcode::JumpNotTrue => op_jump_not_true(self)?,
-            Opcode::Nop => {}
-        };
-
-        Ok(())
+            Opcode::Nop => Ok(()),
+            Opcode::Add => op_add(self),
+            Opcode::Sub => op_sub(self),
+            Opcode::Mul => op_mul(self),
+            Opcode::Div => op_div(self),
+            Opcode::Bang => op_bang(self),
+            Opcode::Negate => op_negate(self),
+            Opcode::Pop => self.pop().map(|_| ()),
+            Opcode::PushConstant => op_constant_push(self),
+            Opcode::PushTrue => self.push(Object::Boolean(true)),
+            Opcode::PushFalse => self.push(Object::Boolean(false)),
+            Opcode::PushNull => self.push(Object::Null),
+            Opcode::Equal => op_comparison(self, opcode),
+            Opcode::NotEqual => op_comparison(self, opcode),
+            Opcode::GreaterThan => op_comparison(self, opcode),
+            Opcode::LessThan => op_comparison(self, opcode),
+            Opcode::SetGlobal => op_set_global(self),
+            Opcode::GetGlobal => op_get_global(self),
+            Opcode::Jump => op_jump(self),
+            Opcode::JumpNotTrue => op_jump_not_true(self),
+        }
     }
 
     fn push(&mut self, obj: Object) -> Result<(), String> {
@@ -439,6 +456,39 @@ fn op_jump_not_true(vm: &mut VM) -> Result<(), String> {
     Ok(())
 }
 
+fn op_set_global(vm: &mut VM) -> Result<(), String> {
+    let index = vm.get_operands(Opcode::SetGlobal.num_operands()).to_u16()?;
+    if index as usize >= MAX_GLOBALS {
+        return Err(format!(
+            "Unable to bind new global (limit: {})",
+            MAX_GLOBALS
+        ));
+    }
+    if index as usize >= vm.globals.len() {
+        vm.globals.resize(index as usize + 1, Object::Null);
+    }
+
+    vm.globals[index as usize] = vm.pop()?;
+
+    Ok(())
+}
+
+fn op_get_global(vm: &mut VM) -> Result<(), String> {
+    let index = vm.get_operands(Opcode::GetGlobal.num_operands()).to_u16()?;
+    if index as usize >= MAX_GLOBALS {
+        return Err(format!(
+            "Unable to get global (attempted to index {} when max is {})",
+            index,
+            (MAX_GLOBALS - 1)
+        ));
+    }
+
+    let obj = vm.globals[index as usize].clone();
+    vm.push(obj)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
@@ -622,6 +672,21 @@ mod tests {
             Object::Boolean(true),
             Object::Int(2026),
         ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn global_variables() {
+        let input = "
+            let x = 5 * 5;
+
+            if x > 10 {
+                let y = x * 2;
+                y;
+            }
+        ";
+        let expected = vec![Object::Int(50)];
 
         run_test(input, expected);
     }

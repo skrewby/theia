@@ -1,7 +1,10 @@
-use crate::ast::{Expression, IfExpression, InfixExpression, PrefixExpression};
+use crate::ast::{Expression, IfExpression, InfixExpression, LetStatement, PrefixExpression};
+use crate::compiler::symbol_table::SymbolTable;
 use crate::opcode::Opcode;
 use crate::token::TokenType;
 use crate::{ast::Statement, object::Object};
+
+pub mod symbol_table;
 
 #[derive(Debug, PartialEq)]
 pub struct Bytecode {
@@ -31,6 +34,8 @@ struct CompilerState {
 
     latest_instruction: EmittedInstruction,
     previous_instruction: EmittedInstruction,
+
+    symbol_table: SymbolTable,
 }
 
 impl CompilerState {
@@ -41,6 +46,18 @@ impl CompilerState {
             errors: Vec::new(),
             latest_instruction: EmittedInstruction::default(),
             previous_instruction: EmittedInstruction::default(),
+            symbol_table: SymbolTable::new(),
+        }
+    }
+
+    fn new_with_state(symbol_table: SymbolTable, constants: Vec<Object>) -> CompilerState {
+        CompilerState {
+            instructions: Vec::new(),
+            errors: Vec::new(),
+            latest_instruction: EmittedInstruction::default(),
+            previous_instruction: EmittedInstruction::default(),
+            symbol_table,
+            constants,
         }
     }
 
@@ -102,6 +119,33 @@ pub fn compile(statement: &Statement) -> Result<Bytecode, Vec<String>> {
     })
 }
 
+pub struct CompilationResult {
+    pub bytecode: Bytecode,
+    pub symbol_table: SymbolTable,
+}
+
+pub fn compile_with_state(
+    statement: &Statement,
+    symbol_table: SymbolTable,
+    constants: Vec<Object>,
+) -> Result<CompilationResult, Vec<String>> {
+    let mut state = CompilerState::new_with_state(symbol_table, constants);
+
+    compile_statement(&mut state, statement);
+
+    if state.has_errors() {
+        return Err(state.errors);
+    }
+
+    Ok(CompilationResult {
+        bytecode: Bytecode {
+            instructions: state.instructions,
+            constants: state.constants,
+        },
+        symbol_table: state.symbol_table,
+    })
+}
+
 fn make_bytecode(op: Opcode, operands: &[&[u8]]) -> Vec<u8> {
     let mut instructions = Vec::new();
 
@@ -125,6 +169,9 @@ fn compile_statement(state: &mut CompilerState, statement: &Statement) {
             compile_expression(state, expression);
             state.emit(Opcode::Pop, &[]);
         }
+        Statement::VariableAssign(statement) => {
+            compile_variable_assign(state, statement);
+        }
         _ => {
             state.add_error(format!("Unsupported statement: {:?}", statement));
         }
@@ -139,6 +186,7 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
         Expression::Float(val) => create_float(state, *val),
         Expression::Boolean(val) => push_boolean(state, *val),
         Expression::If(ex) => compile_if_expression(state, ex),
+        Expression::Identifier(val) => compile_identifier_expression(state, val),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -177,6 +225,15 @@ fn compile_infix_expression(state: &mut CompilerState, infix: &InfixExpression) 
             state.add_error(format!("Unsupported infix operator: {:?}", infix.operator));
         }
     }
+}
+
+fn compile_identifier_expression(state: &mut CompilerState, name: &str) {
+    let Some(symbol) = state.symbol_table.resolve(name) else {
+        state.add_error(format!("Identifier not found: {:?}", name));
+        return;
+    };
+
+    state.emit(Opcode::GetGlobal, &[&symbol.index.to_be_bytes()]);
 }
 
 fn compile_if_expression(state: &mut CompilerState, expression: &IfExpression) {
@@ -244,6 +301,20 @@ fn push_boolean(state: &mut CompilerState, val: bool) {
         true => state.emit(Opcode::PushTrue, &[]),
         false => state.emit(Opcode::PushFalse, &[]),
     }
+}
+
+fn compile_variable_assign(state: &mut CompilerState, statement: &LetStatement) {
+    compile_expression(state, &statement.expression);
+
+    let TokenType::Identifier(identifier) = &statement.identifier.token_type else {
+        state.add_error(format!(
+            "Value {:?} is not a valid binding name for a variable",
+            statement.identifier
+        ));
+        return;
+    };
+    let index = state.symbol_table.define(identifier);
+    state.emit(Opcode::SetGlobal, &[&index.to_be_bytes()]);
 }
 
 #[cfg(test)]
@@ -321,6 +392,36 @@ mod tests {
             Object::Int(30),
             Object::Int(200),
         ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn global_variables() {
+        let input = "
+            let one = 1;
+            let two = one;
+            one;
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::SetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::GetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::SetGlobal as u8,
+            0x00,
+            0x01,
+            Opcode::GetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![Object::Int(1)];
 
         check_bytecode_match(input, &expected, &constants);
     }
