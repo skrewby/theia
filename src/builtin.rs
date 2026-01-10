@@ -1,12 +1,36 @@
 use crate::object::Object;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BuiltInFunction {
     Len,
     Print,
     First,
     Last,
     Tail,
+}
+
+impl BuiltInFunction {
+    pub const ITERATE: &'static [BuiltInFunction] = &[
+        BuiltInFunction::Len,
+        BuiltInFunction::Print,
+        BuiltInFunction::First,
+        BuiltInFunction::Last,
+        BuiltInFunction::Tail,
+    ];
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            BuiltInFunction::Len => "len",
+            BuiltInFunction::Print => "print",
+            BuiltInFunction::First => "first",
+            BuiltInFunction::Last => "last",
+            BuiltInFunction::Tail => "tail",
+        }
+    }
+}
+
+pub fn get_builtins() -> Vec<BuiltInFunction> {
+    BuiltInFunction::ITERATE.iter().copied().collect()
 }
 
 pub fn get_built_in(name: &str) -> Option<BuiltInFunction> {

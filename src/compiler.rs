@@ -2,6 +2,7 @@ use crate::ast::{
     CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression, InfixExpression,
     LetStatement, PrefixExpression,
 };
+use crate::builtin::get_built_in;
 use crate::compiler::symbol_table::{SymbolScope, SymbolTable};
 use crate::object::FunctionObject;
 use crate::opcode::Opcode;
@@ -61,11 +62,13 @@ impl CompilerState {
     fn new() -> CompilerState {
         let mut scopes = Vec::new();
         scopes.push(Scope::default());
+        let mut symbol_table = SymbolTable::new();
+        symbol_table.register_builtins();
 
         CompilerState {
             constants: Vec::new(),
             errors: Vec::new(),
-            symbol_table: SymbolTable::new(),
+            symbol_table,
             scopes,
             scope_index: 0,
         }
@@ -335,6 +338,7 @@ fn compile_identifier_expression(state: &mut CompilerState, name: &str) {
     let opcode = match symbol.scope {
         SymbolScope::Global => Opcode::GetGlobal,
         SymbolScope::Local => Opcode::GetLocal,
+        SymbolScope::Builtin => Opcode::GetBuiltin,
     };
     state.emit(opcode, &[&symbol.index.to_be_bytes()]);
 }
@@ -442,10 +446,19 @@ fn compile_variable_assign(state: &mut CompilerState, statement: &LetStatement) 
         return;
     };
 
+    if let Some(_) = get_built_in(identifier) {
+        state.add_error(format!(
+            "Attempted to bind to reserved name ({:?})",
+            identifier
+        ));
+        return;
+    }
+
     let symbol = state.symbol_table.define(identifier);
     let opcode = match symbol.scope {
         SymbolScope::Global => Opcode::SetGlobal,
         SymbolScope::Local => Opcode::SetLocal,
+        SymbolScope::Builtin => unreachable!(),
     };
     state.emit(opcode, &[&symbol.index.to_be_bytes()]);
 }
@@ -944,6 +957,27 @@ mod tests {
                 .opcode,
             Opcode::Mul
         );
+    }
+
+    #[test]
+    fn builtins() {
+        let input = "
+            len([])
+        ";
+        let expected = vec![
+            Opcode::GetBuiltin as u8,
+            0x00,
+            0x00,
+            Opcode::Array as u8,
+            0x00,
+            0x00,
+            Opcode::Call as u8,
+            0x01,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![];
+
+        check_bytecode_match(input, &expected, &constants);
     }
 
     fn check_bytecode_match(input: &str, expected: &Vec<u8>, constants: &Vec<Object>) {

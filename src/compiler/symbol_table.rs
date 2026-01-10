@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
+use crate::builtin::BuiltInFunction;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SymbolScope {
     Global,
     Local,
+    Builtin,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -18,6 +21,7 @@ pub struct SymbolTable {
     string_store: HashMap<String, u16>,
     symbol_store: HashMap<u16, Symbol>,
     pub num_definitions: usize,
+    builtin_store: HashMap<String, Symbol>,
 }
 
 impl SymbolTable {
@@ -27,6 +31,7 @@ impl SymbolTable {
             string_store: HashMap::new(),
             symbol_store: HashMap::new(),
             num_definitions: 0,
+            builtin_store: HashMap::new(),
         }
     }
 
@@ -36,6 +41,7 @@ impl SymbolTable {
             string_store: HashMap::new(),
             symbol_store: HashMap::new(),
             num_definitions: 0,
+            builtin_store: HashMap::new(),
         }
     }
 
@@ -66,7 +72,25 @@ impl SymbolTable {
         symbol
     }
 
+    pub fn register_builtins(&mut self) -> HashMap<String, Symbol> {
+        let store = HashMap::new();
+
+        for (index, builtin) in BuiltInFunction::ITERATE.iter().enumerate() {
+            let symbol = Symbol {
+                scope: SymbolScope::Builtin,
+                index: index as u16,
+            };
+            self.builtin_store.insert(builtin.name().to_owned(), symbol);
+        }
+
+        store
+    }
+
     pub fn resolve(&self, name: &str) -> Option<Symbol> {
+        if let Some(symbol) = self.builtin_store.get(name) {
+            return Some(*symbol);
+        }
+
         if let Some(&name_index) = self.string_store.get(name) {
             if let Some(symbol) = self.symbol_store.get(&name_index) {
                 return Some(*symbol);
@@ -84,4 +108,3 @@ impl SymbolTable {
         *self.outer.expect("No outer scope present on return")
     }
 }
-

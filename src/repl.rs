@@ -20,6 +20,7 @@ impl Repl {
         let mut constants: Vec<Object> = Vec::new();
         let mut symbol_table = SymbolTable::new();
         let mut globals: Vec<Object> = Vec::new();
+        symbol_table.register_builtins();
 
         loop {
             print!(">> ");

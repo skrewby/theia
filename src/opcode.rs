@@ -8,7 +8,8 @@
 pub enum Opcode {
     /// Do nothing
     Nop = 0x00,
-    /// Pop the top value of the stack and calls it
+    /// Pop the top value of the stack and calls it with nn operands
+    /// 0x01 nn
     Call = 0x01,
     /// Return from the function
     Return = 0x02,
@@ -65,8 +66,11 @@ pub enum Opcode {
     /// 0x82 nn nn
     SetLocal = 0x82,
     /// Push local variable num 0xnnnn to the stack
-    /// 0x81 nn nn
+    /// 0x83 nn nn
     GetLocal = 0x83,
+    /// Push builtin function num 0xnnnn to the stack
+    /// 0x84 nn nn
+    GetBuiltin = 0x84,
 
     // --------- Composites ---------- //
     // Pops nnnn elements from the stack then builds and push the array
@@ -108,6 +112,7 @@ impl Opcode {
             0x81 => Opcode::GetGlobal,
             0x82 => Opcode::SetLocal,
             0x83 => Opcode::GetLocal,
+            0x84 => Opcode::GetBuiltin,
 
             0x90 => Opcode::Array,
             0x91 => Opcode::Index,
@@ -125,6 +130,7 @@ impl Opcode {
             Opcode::GetGlobal => 2,
             Opcode::SetLocal => 2,
             Opcode::GetLocal => 2,
+            Opcode::GetBuiltin => 2,
             Opcode::Jump => 2,
             Opcode::JumpNotTrue => 2,
             Opcode::Array => 2,

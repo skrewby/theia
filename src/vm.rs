@@ -1,6 +1,9 @@
-use std::env::args;
-
-use crate::{compiler::Bytecode, object::Object, opcode::Opcode};
+use crate::{
+    builtin::{BuiltInFunction, call_builtin, get_builtins},
+    compiler::Bytecode,
+    object::{FunctionObject, Object},
+    opcode::Opcode,
+};
 
 const STACK_SIZE: usize = 2048;
 const MAX_GLOBALS: usize = 65536;
@@ -71,6 +74,8 @@ pub struct VM {
 
     frames: Vec<Frame>,
     frame_index: usize,
+
+    builtins: Vec<BuiltInFunction>,
 }
 
 pub struct Registers {
@@ -98,6 +103,7 @@ impl VM {
             globals: Vec::with_capacity(MAX_GLOBALS),
             frames,
             frame_index: 0,
+            builtins: get_builtins(),
         }
     }
 
@@ -114,6 +120,7 @@ impl VM {
             globals,
             frames,
             frame_index: 0,
+            builtins: get_builtins(),
         }
     }
 
@@ -162,6 +169,7 @@ impl VM {
             Opcode::GetGlobal => op_get_global(self),
             Opcode::SetLocal => op_set_local(self),
             Opcode::GetLocal => op_get_local(self),
+            Opcode::GetBuiltin => op_get_builtin(self),
             Opcode::Jump => op_jump(self),
             Opcode::JumpNotTrue => op_jump_not_true(self),
             Opcode::Array => op_array(self),
@@ -616,20 +624,30 @@ fn eval_array_index(array: &Vec<Object>, index: i64) -> Object {
 fn op_call(vm: &mut VM) -> Result<(), String> {
     let args_count = vm.get_operands(Opcode::Call.num_operands()).to_u8()?;
     let sp_index = vm.reg.sp - 1 - args_count as usize;
-    let func = &vm.stack[sp_index];
-    let Object::Function(obj) = func else {
-        return Err(format!("Calling non-function: {}", func.inspect()));
-    };
-    if args_count as usize != obj.num_parameters {
+    let func = vm.stack[sp_index].clone();
+
+    match func {
+        Object::Function(func) => evaluate_user_function(vm, &func, args_count),
+        Object::BuiltIn(builtin) => evaluate_builtin_function(vm, &builtin, args_count),
+        _ => Err(format!("Calling non-function: {}", func.inspect())),
+    }
+}
+
+fn evaluate_user_function(
+    vm: &mut VM,
+    func: &FunctionObject,
+    args_count: u8,
+) -> Result<(), String> {
+    if args_count as usize != func.num_parameters {
         return Err(format!(
             "Incorrect number of parameters: expected {}, got {}",
-            obj.num_parameters, args_count
+            func.num_parameters, args_count
         ));
     }
 
     let base_pointer = vm.reg.sp - 1 - args_count as usize;
-    let frame = Frame::new(obj.instructions.clone(), base_pointer);
-    vm.reg.sp = base_pointer + obj.num_locals + 1;
+    let frame = Frame::new(func.instructions.clone(), base_pointer);
+    vm.reg.sp = base_pointer + func.num_locals + 1;
 
     while vm.stack.len() < vm.reg.sp {
         vm.stack.push(Object::Null);
@@ -641,6 +659,27 @@ fn op_call(vm: &mut VM) -> Result<(), String> {
     if vm.frame_index >= MAX_FRAMES {
         return Err("Too many frames".to_string());
     }
+
+    Ok(())
+}
+
+fn evaluate_builtin_function(
+    vm: &mut VM,
+    builtin: &BuiltInFunction,
+    args_count: u8,
+) -> Result<(), String> {
+    let base_pointer = vm.reg.sp - 1 - args_count as usize;
+
+    let mut args = Vec::new();
+    for i in 0..args_count as usize {
+        args.push(vm.stack[base_pointer + 1 + i].clone());
+    }
+
+    let result = call_builtin(builtin, &args);
+
+    vm.reg.sp = base_pointer;
+
+    vm.push(result)?;
 
     Ok(())
 }
@@ -687,6 +726,22 @@ fn op_get_local(vm: &mut VM) -> Result<(), String> {
     let local_index = vm.get_operands(Opcode::SetLocal.num_operands()).to_u16()?;
     let sp_index = vm.current_frame().base_pointer + local_index as usize + 1;
     let obj = vm.stack[sp_index].clone();
+
+    vm.push(obj)?;
+
+    Ok(())
+}
+
+fn op_get_builtin(vm: &mut VM) -> Result<(), String> {
+    let index = vm
+        .get_operands(Opcode::GetBuiltin.num_operands())
+        .to_u16()?;
+    let func = vm.builtins.get(index as usize).ok_or(format!(
+        "Builtin function ({:?}) not found. Max: {:?}",
+        index,
+        vm.builtins.len(),
+    ))?;
+    let obj = Object::BuiltIn(*func);
 
     vm.push(obj)?;
 
@@ -1018,6 +1073,24 @@ mod tests {
             do_sum() + value
         ";
         let expected = vec![Object::Int(50)];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_builtins() {
+        let input = "
+            len(\"\");
+            len(\"four\");
+            len([]);
+            len([1, 2, 3]);
+        ";
+        let expected = vec![
+            Object::Int(0),
+            Object::Int(4),
+            Object::Int(0),
+            Object::Int(3),
+        ];
 
         run_test(input, expected);
     }
