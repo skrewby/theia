@@ -1,6 +1,6 @@
 use crate::ast::{
-    Expression, FunctionExpression, IfExpression, IndexExpression, InfixExpression, LetStatement,
-    PrefixExpression,
+    CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression, InfixExpression,
+    LetStatement, PrefixExpression,
 };
 use crate::compiler::symbol_table::SymbolTable;
 use crate::object::FunctionObject;
@@ -279,6 +279,7 @@ fn compile_expression(state: &mut CompilerState, expression: &Expression) {
         Expression::Array(val) => compile_array(state, val),
         Expression::Index(index) => compile_index(state, index),
         Expression::Function(func) => compile_function(state, func),
+        Expression::Call(call) => compile_call(state, call),
         _ => {
             state.add_error(format!("Unsupported expression: {:?}", expression));
         }
@@ -433,6 +434,11 @@ fn compile_index(state: &mut CompilerState, expression: &IndexExpression) {
     compile_expression(state, &expression.left);
     compile_expression(state, &expression.index);
     state.emit(Opcode::Index, &[]);
+}
+
+fn compile_call(state: &mut CompilerState, call: &CallExpression) {
+    compile_expression(state, &call.function);
+    state.emit(Opcode::Call, &[]);
 }
 
 #[cfg(test)]
@@ -709,6 +715,67 @@ mod tests {
     }
 
     #[test]
+    fn function_calls_literal() {
+        let input = "
+            fn() { 40 }();
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::Call as u8,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Int(40),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x00,
+                    Opcode::ReturnValue as u8,
+                ],
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn function_calls_variable() {
+        let input = "
+            let x = fn() { 40 };
+            x();
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::SetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::GetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::Call as u8,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Int(40),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x00,
+                    Opcode::ReturnValue as u8,
+                ],
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
     fn scopes() {
         let mut compiler = CompilerState::new();
         assert_eq!(compiler.scope_index, 0);
@@ -747,7 +814,34 @@ mod tests {
             }
         };
 
+        pretty_print_instructions(&bytecode.instructions, expected);
         assert_eq!(bytecode.instructions, *expected, "Bytecode mismatch");
         assert_eq!(bytecode.constants, *constants, "Constants mismatch");
+    }
+
+    fn pretty_print_instructions(compiler: &Vec<u8>, expected: &Vec<u8>) {
+        println!("{}", convert_bytes_to_string("Compiler", compiler));
+        println!("{}", convert_bytes_to_string("Expected", expected));
+    }
+
+    fn convert_bytes_to_string(name: &str, instructions: &Vec<u8>) -> String {
+        let mut result = String::with_capacity(instructions.len());
+        result.push_str(name);
+        result.push_str(": ");
+
+        let mut operands_left = 0;
+        for byte in instructions {
+            if operands_left > 0 {
+                result.push_str(&format!(" {:#02x} ", byte));
+                operands_left -= 1;
+                continue;
+            }
+
+            let opcode = Opcode::from_byte(*byte).unwrap();
+            operands_left = opcode.num_operands();
+            result.push_str(&format!(" {:?} ", opcode));
+        }
+
+        result
     }
 }

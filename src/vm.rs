@@ -2,6 +2,7 @@ use crate::{compiler::Bytecode, object::Object, opcode::Opcode};
 
 const STACK_SIZE: usize = 2048;
 const MAX_GLOBALS: usize = 65536;
+const MAX_FRAMES: usize = 1024;
 
 pub trait ByteArrayExt {
     #[allow(dead_code)]
@@ -25,55 +26,95 @@ impl ByteArrayExt for &[u8] {
     }
 }
 
+impl ByteArrayExt for Vec<u8> {
+    fn to_u8(&self) -> Result<u8, String> {
+        if self.len() != 1 {
+            return Err(format!("Expected 1 byte, got {}", self.len()));
+        }
+        Ok(self[0])
+    }
+
+    fn to_u16(&self) -> Result<u16, String> {
+        if self.len() != 2 {
+            return Err(format!("Expected 2 bytes, got {}", self.len()));
+        }
+        Ok(u16::from_be_bytes([self[0], self[1]]))
+    }
+}
+
+struct Frame {
+    instructions: Vec<u8>,
+    ip: usize,
+}
+
+impl Frame {
+    pub fn new(instructions: Vec<u8>) -> Frame {
+        Frame {
+            instructions,
+            ip: 0,
+        }
+    }
+}
+
 pub struct VM {
     constants: Vec<Object>,
-    instructions: Vec<u8>,
     stack: Vec<Object>,
 
     reg: Registers,
     last_popped: Option<Object>,
 
     globals: Vec<Object>,
+
+    frames: Vec<Frame>,
+    frame_index: usize,
 }
 
 pub struct Registers {
     /// Stack pointer
     sp: usize,
-    /// Instruction pointer
-    ip: usize,
 }
 
 impl Registers {
     pub fn new() -> Registers {
-        Registers { sp: 0, ip: 0 }
+        Registers { sp: 0 }
     }
 }
 
 impl VM {
     pub fn new(bytecode: Bytecode) -> Self {
+        let main_frame = Frame::new(bytecode.instructions);
+        let mut frames = Vec::with_capacity(MAX_FRAMES);
+        frames.push(main_frame);
+
         Self {
             constants: bytecode.constants,
-            instructions: bytecode.instructions,
             stack: Vec::with_capacity(STACK_SIZE),
             reg: Registers::new(),
             last_popped: None,
             globals: Vec::with_capacity(MAX_GLOBALS),
+            frames,
+            frame_index: 0,
         }
     }
 
     pub fn new_with_state(bytecode: Bytecode, globals: Vec<Object>) -> Self {
+        let main_frame = Frame::new(bytecode.instructions);
+        let mut frames = Vec::with_capacity(MAX_FRAMES);
+        frames.push(main_frame);
+
         Self {
             constants: bytecode.constants,
-            instructions: bytecode.instructions,
             stack: Vec::with_capacity(STACK_SIZE),
             reg: Registers::new(),
             last_popped: None,
             globals,
+            frames,
+            frame_index: 0,
         }
     }
 
     pub fn run(&mut self) -> Result<Object, String> {
-        while self.reg.ip < self.instructions.len() {
+        while self.current_frame().ip < self.current_frame().instructions.len() {
             let opcode = self.fetch()?;
             self.decode_and_execute(&opcode)?;
         }
@@ -86,18 +127,18 @@ impl VM {
     }
 
     fn fetch(&mut self) -> Result<Opcode, String> {
-        let opcode = Opcode::from_byte(self.instructions[self.reg.ip]);
-        self.reg.ip += 1;
-
+        let ip = self.current_frame().ip;
+        let opcode = Opcode::from_byte(self.current_frame().instructions[ip]);
+        self.current_frame_mut().ip += 1;
         opcode
     }
 
     fn decode_and_execute(&mut self, opcode: &Opcode) -> Result<(), String> {
         match opcode {
             Opcode::Nop => Ok(()),
-            Opcode::Call => todo!(),
-            Opcode::Return => todo!(),
-            Opcode::ReturnValue => todo!(),
+            Opcode::Call => op_call(self),
+            Opcode::Return => op_return(self),
+            Opcode::ReturnValue => op_return_value(self),
             Opcode::Add => op_add(self),
             Opcode::Sub => op_sub(self),
             Opcode::Mul => op_mul(self),
@@ -152,10 +193,10 @@ impl VM {
         self.last_popped.clone().unwrap_or(Object::Null)
     }
 
-    fn get_operands(&mut self, num: usize) -> &[u8] {
-        let operands = &self.instructions[self.reg.ip..(self.reg.ip + num)];
-        self.reg.ip += num;
-
+    fn get_operands(&mut self, num: usize) -> Vec<u8> {
+        let ip = self.current_frame().ip;
+        let operands = self.current_frame().instructions[ip..(ip + num)].to_vec();
+        self.current_frame_mut().ip += num;
         operands
     }
 
@@ -169,13 +210,21 @@ impl VM {
         }
     }
 
+    fn current_frame(&self) -> &Frame {
+        &self.frames[self.frame_index]
+    }
+
+    fn current_frame_mut(&mut self) -> &mut Frame {
+        &mut self.frames[self.frame_index]
+    }
+
     #[allow(dead_code)]
     fn formatted_instructions(&self) -> Result<String, String> {
-        let mut result = String::with_capacity(self.instructions.len());
+        let mut result = String::with_capacity(self.current_frame().instructions.len());
         result.push_str("Instructions");
 
         let mut operands_left = 0;
-        for (bytenum, byte) in self.instructions.iter().enumerate() {
+        for (bytenum, byte) in self.current_frame().instructions.iter().enumerate() {
             if operands_left > 0 {
                 result.push_str(&format!(" {:#02x}", byte));
                 operands_left -= 1;
@@ -443,7 +492,7 @@ fn eval_prefix_negate(right: &Object) -> Object {
 
 fn op_jump(vm: &mut VM) -> Result<(), String> {
     let position = vm.get_operands(Opcode::Jump.num_operands()).to_u16()?;
-    vm.reg.ip = position as usize;
+    vm.current_frame_mut().ip = position as usize;
 
     Ok(())
 }
@@ -455,7 +504,7 @@ fn op_jump_not_true(vm: &mut VM) -> Result<(), String> {
 
     let condition = vm.pop()?;
     if !condition.bool_value() {
-        vm.reg.ip = position as usize;
+        vm.current_frame_mut().ip = position as usize;
     }
 
     Ok(())
@@ -558,6 +607,49 @@ fn eval_array_index(array: &Vec<Object>, index: i64) -> Object {
     return array[index as usize].clone();
 }
 
+fn op_call(vm: &mut VM) -> Result<(), String> {
+    let func = vm.pop()?;
+    let Object::Function(obj) = func else {
+        return Err(format!("Calling non-function: {}", func.inspect()));
+    };
+
+    let frame = Frame::new(obj.instructions);
+    vm.frames.push(frame);
+    vm.frame_index += 1;
+
+    if vm.frame_index >= MAX_FRAMES {
+        return Err("Too many frames".to_string());
+    }
+
+    Ok(())
+}
+
+fn op_return_value(vm: &mut VM) -> Result<(), String> {
+    let return_value = vm.pop()?;
+
+    vm.frame_index -= 1;
+    let _ = vm
+        .frames
+        .pop()
+        .ok_or("Error when popping stack frame".to_owned())?;
+
+    vm.push(return_value)?;
+
+    Ok(())
+}
+
+fn op_return(vm: &mut VM) -> Result<(), String> {
+    vm.frame_index -= 1;
+    let _ = vm
+        .frames
+        .pop()
+        .ok_or("Error when popping stack frame".to_owned());
+
+    vm.push(Object::Null)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{compiler::compile, lexer::lex_input, parser::parse_program};
@@ -570,7 +662,7 @@ mod tests {
         }
 
         fn step(&mut self) -> Result<Object, String> {
-            while self.reg.ip < self.instructions.len() {
+            while self.current_frame().ip < self.current_frame().instructions.len() {
                 let opcode = self.fetch()?;
                 self.decode_and_execute(&opcode)?;
 
@@ -591,7 +683,7 @@ mod tests {
         type Item = Result<Object, String>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.vm.reg.ip >= self.vm.instructions.len() {
+            if self.vm.current_frame().ip >= self.vm.current_frame().instructions.len() {
                 return None;
             }
 
@@ -786,6 +878,59 @@ mod tests {
             Object::Array(vec![Object::Int(3), Object::Int(12), Object::Int(11)]),
             Object::Int(11),
         ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_call_no_args() {
+        let input = "
+            let x = fn() { 5 + 10; };
+            x();
+            let y = fn() { 30 - 20 }
+            x() + y()
+            let z = fn() { x() + 3 }
+            z()
+        ";
+        let expected = vec![Object::Int(15), Object::Int(25), Object::Int(18)];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_call_explicit_return() {
+        let input = "
+            let x = fn() { return 5; return 10; };
+            x();
+            let y = fn() { return 30; 20 }
+            y()
+        ";
+        let expected = vec![Object::Int(5), Object::Int(30)];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_call_no_return() {
+        let input = "
+            let x = fn() {  };
+            x();
+            let y = fn() { x() }
+            y()
+        ";
+        let expected = vec![Object::Null, Object::Null];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_first_class() {
+        let input = "
+            let x = fn() { 5 }
+            let y = fn() { x }
+            y()()
+        ";
+        let expected = vec![Object::Int(5)];
 
         run_test(input, expected);
     }
