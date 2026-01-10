@@ -1,3 +1,5 @@
+use std::env::args;
+
 use crate::{compiler::Bytecode, object::Object, opcode::Opcode};
 
 const STACK_SIZE: usize = 2048;
@@ -612,14 +614,22 @@ fn eval_array_index(array: &Vec<Object>, index: i64) -> Object {
 }
 
 fn op_call(vm: &mut VM) -> Result<(), String> {
-    let func = vm.pop()?;
+    let args_count = vm.get_operands(Opcode::Call.num_operands()).to_u8()?;
+    let sp_index = vm.reg.sp - 1 - args_count as usize;
+    let func = &vm.stack[sp_index];
     let Object::Function(obj) = func else {
         return Err(format!("Calling non-function: {}", func.inspect()));
     };
+    if args_count as usize != obj.num_parameters {
+        return Err(format!(
+            "Incorrect number of parameters: expected {}, got {}",
+            obj.num_parameters, args_count
+        ));
+    }
 
-    let base_pointer = vm.reg.sp;
-    let frame = Frame::new(obj.instructions, base_pointer);
-    vm.reg.sp = base_pointer + obj.num_locals;
+    let base_pointer = vm.reg.sp - 1 - args_count as usize;
+    let frame = Frame::new(obj.instructions.clone(), base_pointer);
+    vm.reg.sp = base_pointer + obj.num_locals + 1;
 
     while vm.stack.len() < vm.reg.sp {
         vm.stack.push(Object::Null);
@@ -665,7 +675,7 @@ fn op_return(vm: &mut VM) -> Result<(), String> {
 
 fn op_set_local(vm: &mut VM) -> Result<(), String> {
     let local_index = vm.get_operands(Opcode::SetLocal.num_operands()).to_u16()?;
-    let sp_index = vm.current_frame().base_pointer + local_index as usize;
+    let sp_index = vm.current_frame().base_pointer + local_index as usize + 1;
     let obj = vm.pop()?;
 
     vm.stack[sp_index] = obj;
@@ -675,7 +685,7 @@ fn op_set_local(vm: &mut VM) -> Result<(), String> {
 
 fn op_get_local(vm: &mut VM) -> Result<(), String> {
     let local_index = vm.get_operands(Opcode::SetLocal.num_operands()).to_u16()?;
-    let sp_index = vm.current_frame().base_pointer + local_index as usize;
+    let sp_index = vm.current_frame().base_pointer + local_index as usize + 1;
     let obj = vm.stack[sp_index].clone();
 
     vm.push(obj)?;
@@ -989,6 +999,25 @@ mod tests {
             Object::Int(15),
             Object::Int(65),
         ];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_arguments() {
+        let input = "
+            let value = 10;
+            let sum = fn(a, b) {
+                let c = a + b;
+                c + value
+            }
+            let do_sum = fn() {
+                sum(1, 2) + sum(3, 4) + value
+            }
+
+            do_sum() + value
+        ";
+        let expected = vec![Object::Int(50)];
 
         run_test(input, expected);
     }

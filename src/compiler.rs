@@ -391,6 +391,15 @@ fn compile_alternative(
 
 fn compile_function(state: &mut CompilerState, func: &FunctionExpression) {
     state.enter_scope();
+
+    for par in &func.parameters {
+        let Expression::Identifier(val) = par else {
+            state.add_error(format!("Invalid parameter: {:?}", par));
+            return;
+        };
+        state.symbol_table.define(&val);
+    }
+
     compile_statement(state, &func.body);
     if state.is_latest(Opcode::Pop) {
         state.replace_latest_with(Opcode::ReturnValue);
@@ -404,6 +413,7 @@ fn compile_function(state: &mut CompilerState, func: &FunctionExpression) {
     let obj = Object::Function(FunctionObject {
         instructions,
         num_locals,
+        num_parameters: func.parameters.len(),
     });
     let const_idx = state.add_constant(obj);
     state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
@@ -457,7 +467,12 @@ fn compile_index(state: &mut CompilerState, expression: &IndexExpression) {
 
 fn compile_call(state: &mut CompilerState, call: &CallExpression) {
     compile_expression(state, &call.function);
-    state.emit(Opcode::Call, &[]);
+
+    for a in &call.args {
+        compile_expression(state, a);
+    }
+
+    state.emit(Opcode::Call, &[&(call.args.len() as u8).to_be_bytes()]);
 }
 
 #[cfg(test)]
@@ -663,6 +678,7 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
         ];
 
@@ -690,6 +706,7 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
         ];
 
@@ -717,6 +734,7 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
         ];
 
@@ -732,6 +750,7 @@ mod tests {
         let constants = vec![Object::Function(FunctionObject {
             instructions: vec![Opcode::Return as u8],
             num_locals: 0,
+            num_parameters: 0,
         })];
 
         check_bytecode_match(input, &expected, &constants);
@@ -747,6 +766,7 @@ mod tests {
             0x00,
             0x01,
             Opcode::Call as u8,
+            0x00,
             Opcode::Pop as u8,
         ];
         let constants = vec![
@@ -759,6 +779,7 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
         ];
 
@@ -782,6 +803,7 @@ mod tests {
             0x00,
             0x00,
             Opcode::Call as u8,
+            0x00,
             Opcode::Pop as u8,
         ];
         let constants = vec![
@@ -794,7 +816,56 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn function_calls_arguments() {
+        let input = "
+            let x = fn(a, b) { a + b };
+            x(2, 3);
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::SetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::GetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x01,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x02,
+            Opcode::Call as u8,
+            0x02,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::GetLocal as u8,
+                    0x00,
+                    0x00,
+                    Opcode::GetLocal as u8,
+                    0x00,
+                    0x01,
+                    Opcode::Add as u8,
+                    Opcode::ReturnValue as u8,
+                ],
+                num_locals: 0,
+                num_parameters: 0,
+            }),
+            Object::Int(2),
+            Object::Int(3),
         ];
 
         check_bytecode_match(input, &expected, &constants);
@@ -842,6 +913,7 @@ mod tests {
                     Opcode::ReturnValue as u8,
                 ],
                 num_locals: 0,
+                num_parameters: 0,
             }),
         ];
 

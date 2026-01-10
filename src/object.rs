@@ -19,6 +19,7 @@ pub enum Object {
 pub struct FunctionObject {
     pub instructions: Vec<u8>,
     pub num_locals: usize,
+    pub num_parameters: usize,
 }
 
 impl PartialEq for FunctionObject {

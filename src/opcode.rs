@@ -128,6 +128,7 @@ impl Opcode {
             Opcode::Jump => 2,
             Opcode::JumpNotTrue => 2,
             Opcode::Array => 2,
+            Opcode::Call => 1,
             _ => 0,
         }
     }
