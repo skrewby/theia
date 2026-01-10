@@ -45,13 +45,15 @@ impl ByteArrayExt for Vec<u8> {
 struct Frame {
     instructions: Vec<u8>,
     ip: usize,
+    base_pointer: usize,
 }
 
 impl Frame {
-    pub fn new(instructions: Vec<u8>) -> Frame {
+    pub fn new(instructions: Vec<u8>, base_pointer: usize) -> Frame {
         Frame {
             instructions,
             ip: 0,
+            base_pointer,
         }
     }
 }
@@ -82,7 +84,7 @@ impl Registers {
 
 impl VM {
     pub fn new(bytecode: Bytecode) -> Self {
-        let main_frame = Frame::new(bytecode.instructions);
+        let main_frame = Frame::new(bytecode.instructions, 0);
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         frames.push(main_frame);
 
@@ -98,7 +100,7 @@ impl VM {
     }
 
     pub fn new_with_state(bytecode: Bytecode, globals: Vec<Object>) -> Self {
-        let main_frame = Frame::new(bytecode.instructions);
+        let main_frame = Frame::new(bytecode.instructions, 0);
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         frames.push(main_frame);
 
@@ -156,6 +158,8 @@ impl VM {
             Opcode::LessThan => op_comparison(self, opcode),
             Opcode::SetGlobal => op_set_global(self),
             Opcode::GetGlobal => op_get_global(self),
+            Opcode::SetLocal => op_set_local(self),
+            Opcode::GetLocal => op_get_local(self),
             Opcode::Jump => op_jump(self),
             Opcode::JumpNotTrue => op_jump_not_true(self),
             Opcode::Array => op_array(self),
@@ -613,7 +617,14 @@ fn op_call(vm: &mut VM) -> Result<(), String> {
         return Err(format!("Calling non-function: {}", func.inspect()));
     };
 
-    let frame = Frame::new(obj.instructions);
+    let base_pointer = vm.reg.sp;
+    let frame = Frame::new(obj.instructions, base_pointer);
+    vm.reg.sp = base_pointer + obj.num_locals;
+
+    while vm.stack.len() < vm.reg.sp {
+        vm.stack.push(Object::Null);
+    }
+
     vm.frames.push(frame);
     vm.frame_index += 1;
 
@@ -628,10 +639,11 @@ fn op_return_value(vm: &mut VM) -> Result<(), String> {
     let return_value = vm.pop()?;
 
     vm.frame_index -= 1;
-    let _ = vm
+    let frame = vm
         .frames
         .pop()
         .ok_or("Error when popping stack frame".to_owned())?;
+    vm.reg.sp = frame.base_pointer;
 
     vm.push(return_value)?;
 
@@ -640,12 +652,33 @@ fn op_return_value(vm: &mut VM) -> Result<(), String> {
 
 fn op_return(vm: &mut VM) -> Result<(), String> {
     vm.frame_index -= 1;
-    let _ = vm
+    let frame = vm
         .frames
         .pop()
-        .ok_or("Error when popping stack frame".to_owned());
+        .ok_or("Error when popping stack frame".to_owned())?;
+    vm.reg.sp = frame.base_pointer;
 
     vm.push(Object::Null)?;
+
+    Ok(())
+}
+
+fn op_set_local(vm: &mut VM) -> Result<(), String> {
+    let local_index = vm.get_operands(Opcode::SetLocal.num_operands()).to_u16()?;
+    let sp_index = vm.current_frame().base_pointer + local_index as usize;
+    let obj = vm.pop()?;
+
+    vm.stack[sp_index] = obj;
+
+    Ok(())
+}
+
+fn op_get_local(vm: &mut VM) -> Result<(), String> {
+    let local_index = vm.get_operands(Opcode::SetLocal.num_operands()).to_u16()?;
+    let sp_index = vm.current_frame().base_pointer + local_index as usize;
+    let obj = vm.stack[sp_index].clone();
+
+    vm.push(obj)?;
 
     Ok(())
 }
@@ -931,6 +964,31 @@ mod tests {
             y()()
         ";
         let expected = vec![Object::Int(5)];
+
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn function_local_bindings() {
+        let input = "
+            let x = fn() { let foo = 2; foo };
+            let y = fn() { let foo = 3; let factor = 2; (x() + foo) * factor };
+            let val = 30;
+            let inc = fn() { let num = 5; val - num; };
+            let dec = fn() { let num = 10; val + num; };
+            let foo = fn() { let val = 15; val };
+
+            x()
+            y()
+            foo()
+            inc() + dec()
+        ";
+        let expected = vec![
+            Object::Int(2),
+            Object::Int(10),
+            Object::Int(15),
+            Object::Int(65),
+        ];
 
         run_test(input, expected);
     }

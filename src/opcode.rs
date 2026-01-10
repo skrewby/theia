@@ -54,13 +54,19 @@ pub enum Opcode {
     Jump = 0x60,
     JumpNotTrue = 0x61,
 
-    // ----------- Globals ----------- //
+    // ---------- Variables ---------- //
     /// Bind the top value on the stack to global variable num 0xnnnn
     /// 0x80 nn nn
     SetGlobal = 0x80,
     /// Push global variable num 0xnnnn to the stack
     /// 0x81 nn nn
     GetGlobal = 0x81,
+    /// Bind the top value on the stack to local variable num 0xnnnn
+    /// 0x82 nn nn
+    SetLocal = 0x82,
+    /// Push local variable num 0xnnnn to the stack
+    /// 0x81 nn nn
+    GetLocal = 0x83,
 
     // --------- Composites ---------- //
     // Pops nnnn elements from the stack then builds and push the array
@@ -100,6 +106,8 @@ impl Opcode {
 
             0x80 => Opcode::SetGlobal,
             0x81 => Opcode::GetGlobal,
+            0x82 => Opcode::SetLocal,
+            0x83 => Opcode::GetLocal,
 
             0x90 => Opcode::Array,
             0x91 => Opcode::Index,
@@ -115,6 +123,8 @@ impl Opcode {
             Opcode::PushConstant => 2,
             Opcode::SetGlobal => 2,
             Opcode::GetGlobal => 2,
+            Opcode::SetLocal => 2,
+            Opcode::GetLocal => 2,
             Opcode::Jump => 2,
             Opcode::JumpNotTrue => 2,
             Opcode::Array => 2,

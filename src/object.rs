@@ -18,6 +18,7 @@ pub enum Object {
 #[derive(Debug, Clone)]
 pub struct FunctionObject {
     pub instructions: Vec<u8>,
+    pub num_locals: usize,
 }
 
 impl PartialEq for FunctionObject {

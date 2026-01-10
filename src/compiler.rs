@@ -2,7 +2,7 @@ use crate::ast::{
     CallExpression, Expression, FunctionExpression, IfExpression, IndexExpression, InfixExpression,
     LetStatement, PrefixExpression,
 };
-use crate::compiler::symbol_table::SymbolTable;
+use crate::compiler::symbol_table::{SymbolScope, SymbolTable};
 use crate::object::FunctionObject;
 use crate::opcode::Opcode;
 use crate::token::TokenType;
@@ -168,6 +168,9 @@ impl CompilerState {
     fn enter_scope(&mut self) {
         self.scopes.push(Scope::default());
         self.scope_index += 1;
+
+        let outer = std::mem::replace(&mut self.symbol_table, SymbolTable::new());
+        self.symbol_table = SymbolTable::new_enclosed(outer);
     }
 
     fn leave_scope(&mut self) -> Vec<u8> {
@@ -175,6 +178,9 @@ impl CompilerState {
 
         self.scope_index -= 1;
         self.scopes.truncate(self.scope_index + 1);
+
+        let inner = std::mem::replace(&mut self.symbol_table, SymbolTable::new());
+        self.symbol_table = inner.into_outer();
 
         instructions
     }
@@ -326,7 +332,11 @@ fn compile_identifier_expression(state: &mut CompilerState, name: &str) {
         return;
     };
 
-    state.emit(Opcode::GetGlobal, &[&symbol.index.to_be_bytes()]);
+    let opcode = match symbol.scope {
+        SymbolScope::Global => Opcode::GetGlobal,
+        SymbolScope::Local => Opcode::GetLocal,
+    };
+    state.emit(opcode, &[&symbol.index.to_be_bytes()]);
 }
 
 fn compile_if_expression(state: &mut CompilerState, expression: &IfExpression) {
@@ -389,8 +399,12 @@ fn compile_function(state: &mut CompilerState, func: &FunctionExpression) {
         state.emit(Opcode::Return, &[]);
     }
 
+    let num_locals = state.symbol_table.num_definitions;
     let instructions = state.leave_scope();
-    let obj = Object::Function(FunctionObject { instructions });
+    let obj = Object::Function(FunctionObject {
+        instructions,
+        num_locals,
+    });
     let const_idx = state.add_constant(obj);
     state.emit(Opcode::PushConstant, &[&const_idx.to_be_bytes()]);
 }
@@ -417,8 +431,13 @@ fn compile_variable_assign(state: &mut CompilerState, statement: &LetStatement) 
         ));
         return;
     };
-    let index = state.symbol_table.define(identifier);
-    state.emit(Opcode::SetGlobal, &[&index.to_be_bytes()]);
+
+    let symbol = state.symbol_table.define(identifier);
+    let opcode = match symbol.scope {
+        SymbolScope::Global => Opcode::SetGlobal,
+        SymbolScope::Local => Opcode::SetLocal,
+    };
+    state.emit(opcode, &[&symbol.index.to_be_bytes()]);
 }
 
 fn compile_array(state: &mut CompilerState, expressions: &Vec<Expression>) {
@@ -643,6 +662,7 @@ mod tests {
                     Opcode::Add as u8,
                     Opcode::ReturnValue as u8,
                 ],
+                num_locals: 0,
             }),
         ];
 
@@ -669,6 +689,7 @@ mod tests {
                     Opcode::Add as u8,
                     Opcode::ReturnValue as u8,
                 ],
+                num_locals: 0,
             }),
         ];
 
@@ -695,6 +716,7 @@ mod tests {
                     0x01,
                     Opcode::ReturnValue as u8,
                 ],
+                num_locals: 0,
             }),
         ];
 
@@ -709,6 +731,7 @@ mod tests {
         let expected = vec![Opcode::PushConstant as u8, 0x00, 0x00, Opcode::Pop as u8];
         let constants = vec![Object::Function(FunctionObject {
             instructions: vec![Opcode::Return as u8],
+            num_locals: 0,
         })];
 
         check_bytecode_match(input, &expected, &constants);
@@ -735,6 +758,7 @@ mod tests {
                     0x00,
                     Opcode::ReturnValue as u8,
                 ],
+                num_locals: 0,
             }),
         ];
 
@@ -769,6 +793,55 @@ mod tests {
                     0x00,
                     Opcode::ReturnValue as u8,
                 ],
+                num_locals: 0,
+            }),
+        ];
+
+        check_bytecode_match(input, &expected, &constants);
+    }
+
+    #[test]
+    fn function_local_scope() {
+        let input = "
+            let y = 15;
+            fn() {
+                let x = 5;
+                x + y
+            }
+        ";
+        let expected = vec![
+            Opcode::PushConstant as u8,
+            0x00,
+            0x00,
+            Opcode::SetGlobal as u8,
+            0x00,
+            0x00,
+            Opcode::PushConstant as u8,
+            0x00,
+            0x02,
+            Opcode::Pop as u8,
+        ];
+        let constants = vec![
+            Object::Int(15),
+            Object::Int(5),
+            Object::Function(FunctionObject {
+                instructions: vec![
+                    Opcode::PushConstant as u8,
+                    0x00,
+                    0x01,
+                    Opcode::SetLocal as u8,
+                    0x00,
+                    0x00,
+                    Opcode::GetLocal as u8,
+                    0x00,
+                    0x00,
+                    Opcode::GetGlobal as u8,
+                    0x00,
+                    0x00,
+                    Opcode::Add as u8,
+                    Opcode::ReturnValue as u8,
+                ],
+                num_locals: 0,
             }),
         ];
 
